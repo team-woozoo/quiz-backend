@@ -63,3 +63,6 @@ out/
 
 ### properties ###
 src/main/resources/application-local.properties
+
+### private test materials ###
+src/test/resources/private/
