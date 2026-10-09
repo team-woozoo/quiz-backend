@@ -66,3 +66,9 @@ src/main/resources/application-local.properties
 
 ### private test materials ###
 src/test/resources/private/
+
+### deploy ###
+.env
+*.tar
+*.pem
+*.ppk

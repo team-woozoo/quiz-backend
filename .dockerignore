@@ -1,0 +1,10 @@
+.git
+.gradle
+.idea
+build
+docs
+deploy
+src/test
+
+# 로컬 설정에는 비밀값이 들어갈 수 있어 이미지에 넣지 않는다
+src/main/resources/application-local.properties
