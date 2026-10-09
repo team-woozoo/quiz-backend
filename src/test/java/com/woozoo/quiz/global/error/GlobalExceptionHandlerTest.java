@@ -2,6 +2,7 @@ package com.woozoo.quiz.global.error;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
@@ -16,7 +17,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest
+// 예외 응답의 모양만 본다. 인증은 보안 테스트에서 따로 확인하므로 보안 필터는 끈다
+@WebMvcTest(controllers = GlobalExceptionHandlerTest.ThrowingController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @Import(GlobalExceptionHandlerTest.ThrowingController.class)
 class GlobalExceptionHandlerTest {
 
