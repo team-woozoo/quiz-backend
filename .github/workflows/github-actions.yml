@@ -29,6 +29,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
       - name: Test
         run: ./gradlew test --no-daemon
 
@@ -78,3 +81,55 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    needs: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    env:
+      SSH_TARGET: ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.EC2_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Sync compose file
+        run: |
+          ssh "$SSH_TARGET" "mkdir -p ~/quiz-backend"
+          scp deploy/compose.yaml "$SSH_TARGET:quiz-backend/compose.yaml"
+
+      - name: Log in to GHCR on server
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | ssh "$SSH_TARGET" \
+            "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+
+      - name: Deploy
+        run: |
+          IMAGE="${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA::7}"
+          ssh "$SSH_TARGET" "IMAGE='$IMAGE' bash -s" <<'REMOTE'
+          set -euo pipefail
+          trap 'docker logout ghcr.io >/dev/null' EXIT
+          cd ~/quiz-backend
+          touch .env
+          if grep -q '^APP_IMAGE=' .env; then
+            sed -i "s|^APP_IMAGE=.*|APP_IMAGE=${IMAGE}|" .env
+          else
+            echo "APP_IMAGE=${IMAGE}" >> .env
+          fi
+          docker compose pull app
+          docker compose up -d
+          docker compose ps
+          docker image prune -f
+          REMOTE
