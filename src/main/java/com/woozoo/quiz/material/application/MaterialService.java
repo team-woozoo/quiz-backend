@@ -1,9 +1,12 @@
 package com.woozoo.quiz.material.application;
 
+import com.woozoo.quiz.global.error.BusinessException;
+import com.woozoo.quiz.global.error.ErrorCode;
 import com.woozoo.quiz.material.domain.MaterialChunk;
 import com.woozoo.quiz.material.domain.NewMaterial;
 import com.woozoo.quiz.material.domain.PageText;
 import com.woozoo.quiz.material.port.ExtractedPage;
+import com.woozoo.quiz.material.port.TextExtractionException;
 import com.woozoo.quiz.material.port.TextExtractionPort;
 import org.springframework.stereotype.Service;
 
@@ -22,8 +25,8 @@ public class MaterialService {
     }
 
     public long upload(UploadMaterialCommand command) {
-        List<ExtractedPage> extractedPages =
-                textExtractionPort.extractPages(command.content(), command.fileType());
+
+        List<ExtractedPage> extractedPages = extract(command);
 
         List<PageText> pageTexts = extractedPages.stream()
                 .map(extractedPage -> new PageText(extractedPage.pageNo(),
@@ -31,8 +34,7 @@ public class MaterialService {
                 .toList();
 
         if(pageTexts.isEmpty()) {
-            // TODO: 전역 예외 처리에서 EXTRACTION_FAILED 로 바꾼다
-            throw new IllegalArgumentException("텍스트를 추출할 수 없는 PDF 입니다");
+            throw new BusinessException(ErrorCode.EXTRACTION_FAILED);
         }
 
         NewMaterial newMaterial = new NewMaterial(command.ownerId(), command.title(),
@@ -40,5 +42,13 @@ public class MaterialService {
         List<MaterialChunk> chunks = MaterialChunk.fromPages(pageTexts);
 
         return materialWriter.save(newMaterial, chunks);
+    }
+
+    private List<ExtractedPage> extract(UploadMaterialCommand command) {
+        try {
+            return textExtractionPort.extractPages(command.content(), command.fileType());
+        }catch (TextExtractionException e) {
+            throw new BusinessException(ErrorCode.EXTRACTION_FAILED, e);
+        }
     }
 }
