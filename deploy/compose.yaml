@@ -13,6 +13,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:?POSTGRES_DB 를 .env 에 설정해야 한다}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?POSTGRES_USER 를 .env 에 설정해야 한다}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 를 .env 에 설정해야 한다}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 을 .env 에 설정해야 한다}
     ports:
       - "8080:8080"
     mem_limit: 1g
