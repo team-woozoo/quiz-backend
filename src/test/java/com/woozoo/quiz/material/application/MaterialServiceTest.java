@@ -1,10 +1,13 @@
 package com.woozoo.quiz.material.application;
 
 import com.woozoo.quiz.TestcontainersConfiguration;
+import com.woozoo.quiz.global.error.BusinessException;
+import com.woozoo.quiz.global.error.ErrorCode;
 import com.woozoo.quiz.material.domain.FileType;
 import com.woozoo.quiz.material.domain.MaterialChunk;
 import com.woozoo.quiz.material.domain.NewMaterial;
 import com.woozoo.quiz.material.port.ExtractedPage;
+import com.woozoo.quiz.material.port.TextExtractionException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -87,12 +90,33 @@ class MaterialServiceTest {
         MaterialService materialService = serviceExtracting(List.of());
 
         assertThatThrownBy(() -> materialService.upload(command()))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.EXTRACTION_FAILED);
 
-        Long materialCount = jdbcClient.sql("SELECT COUNT(*) FROM material WHERE owner_id = :ownerId")
+        assertThat(materialCount()).isZero();
+    }
+
+    @Test
+    void PDF를_읽지_못하면_원인을_담아_추출_실패로_바꾸고_아무것도_저장하지_않는다() {
+        TextExtractionException cause = new TextExtractionException("PDF를 읽을 수 없습니다", null);
+        MaterialService materialService = new MaterialService((content, fileType) -> {
+            throw cause;
+        }, materialWriter);
+
+        assertThatThrownBy(() -> materialService.upload(command()))
+                .isInstanceOf(BusinessException.class)
+                .hasCause(cause)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.EXTRACTION_FAILED);
+
+        assertThat(materialCount()).isZero();
+    }
+
+    private long materialCount() {
+        return jdbcClient.sql("SELECT COUNT(*) FROM material WHERE owner_id = :ownerId")
                 .param("ownerId", ownerId)
                 .query(Long.class)
                 .single();
-        assertThat(materialCount).isZero();
     }
 }
