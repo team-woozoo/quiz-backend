@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 public record SignupRequest(
-        @NotBlank @Email @Size(max = 255)
+        @NotBlank @Email @Size(min = 1, max = 255)
         String email,
 
         // BCrypt 는 72 바이트를 넘는 비밀번호를 거부한다. 글자 수 상한은 영문 기준이고,
@@ -14,7 +14,7 @@ public record SignupRequest(
         @NotBlank @Size(min = 8, max = 64)
         String password,
 
-        @NotBlank @Size(max = 50)
+        @NotBlank @Size(min = 1, max = 50)
         String nickname
 ) {
 

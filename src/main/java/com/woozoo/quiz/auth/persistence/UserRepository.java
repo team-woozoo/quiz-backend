@@ -47,4 +47,15 @@ public class UserRepository {
                 .query(User.class)
                 .optional();
     }
+
+    public Optional<User> findById(long id) {
+        return jdbcClient.sql("""
+                SELECT id, email, password_hash, nickname
+                FROM users
+                WHERE id = :id
+                """)
+                .param("id", id)
+                .query(User.class)
+                .optional();
+    }
 }

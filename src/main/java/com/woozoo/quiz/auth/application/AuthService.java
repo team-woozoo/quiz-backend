@@ -2,19 +2,26 @@ package com.woozoo.quiz.auth.application;
 
 import com.woozoo.quiz.auth.domain.NewUser;
 import com.woozoo.quiz.auth.domain.User;
+import com.woozoo.quiz.auth.persistence.RefreshTokenRepository;
 import com.woozoo.quiz.auth.persistence.UserRepository;
 import com.woozoo.quiz.global.error.BusinessException;
 import com.woozoo.quiz.global.error.ErrorCode;
 import com.woozoo.quiz.global.security.JwtProvider;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Locale;
 import java.util.Optional;
 
 @Service
+@Slf4j
 public class AuthService {
 
     // BCrypt 는 72 바이트를 넘는 비밀번호에 예외를 던진다. 요청 DTO 의 글자 수 상한으로는
@@ -23,14 +30,30 @@ public class AuthService {
     private static final String PLACEHOLDER_PASSWORD = "account-absent-placeholder";
 
     private final UserRepository userRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final RefreshTokenGenerator refreshTokenGenerator;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final String dummyPasswordHash;
+    private final Duration refreshTokenExpiration;
+    private final Duration accessTokenExpiration;
 
-    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtProvider jwtProvider) {
+    public AuthService(UserRepository userRepository,
+                       RefreshTokenRepository refreshTokenRepository,
+                       RefreshTokenGenerator refreshTokenGenerator,
+                       PasswordEncoder passwordEncoder,
+                       JwtProvider jwtProvider,
+                       @Value("${jwt.refresh-token-expiration}")
+                       Duration refreshTokenExpiration,
+                       @Value("${jwt.access-token-expiration}")
+                       Duration accessTokenExpiration) {
         this.userRepository = userRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
+        this.refreshTokenGenerator = refreshTokenGenerator;
         this.passwordEncoder = passwordEncoder;
         this.jwtProvider = jwtProvider;
+        this.refreshTokenExpiration = refreshTokenExpiration;
+        this.accessTokenExpiration = accessTokenExpiration;
         // 계정이 없을 때 비교할 대조용 해시. 상수로 두지 않고 실제 인코더로 만들어
         // 비밀번호 해시와 같은 강도(cost)를 유지한다
         this.dummyPasswordHash = passwordEncoder.encode(PLACEHOLDER_PASSWORD);
@@ -55,13 +78,13 @@ public class AuthService {
     }
 
     /**
-     * 이메일과 비밀번호를 확인하고 Access 토큰을 발급한다.
+     * 이메일과 비밀번호를 확인하고 Access 토큰과 Refresh 토큰을 발급한다.
      * <p>
      * 응답 내용도 응답 시간도 가입 여부를 드러내지 않아야 한다. 계정이 없을 때 바로 실패하면
      * BCrypt 비교(수십~수백 ms)를 건너뛰어 응답이 눈에 띄게 빨라지고, 그 차이로 가입된 이메일을
      * 골라낼 수 있다. 그래서 계정이 없어도 대조용 해시로 비교를 한 번 한 뒤 같은 오류로 실패시킨다.
      */
-    public String login(LoginCommand loginCommand) {
+    public IssuedTokens login(LoginCommand loginCommand) {
         String email = normalizeEmail(loginCommand.email());
         Optional<User> user = userRepository.findByEmail(email);
 
@@ -77,7 +100,29 @@ public class AuthService {
         if (user.isEmpty() || passwordTooLong || !passwordMatches) {
             throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
         }
-        return jwtProvider.createAccessToken(user.get().id());
+        return issueTokens(user.get().id());
+    }
+
+    public void logout(String refreshToken) {
+        refreshTokenRepository.revoke(refreshTokenGenerator.hashToken(refreshToken));
+    }
+
+    @Transactional(noRollbackFor = BusinessException.class)
+    public IssuedTokens refresh(String refreshToken) {
+        String hash = refreshTokenGenerator.hashToken(refreshToken);
+        Optional<Long> userId = refreshTokenRepository.revoke(hash);
+
+        if (userId.isPresent()) {
+            return issueTokens(userId.get());
+        }
+
+        refreshTokenRepository.findUserIdOfRevoked(hash)
+                .ifPresent(ownerId -> {
+                    log.warn("이미 사용된 refresh 토큰 재사용 감지, 사용자 {} 의 토큰을 모두 폐기한다", ownerId);
+                    refreshTokenRepository.revokeAllByUserId(ownerId);
+                });
+
+        throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
     }
 
     // Postgres 의 UNIQUE 는 대소문자를 구분해서, 정규화하지 않으면 같은 주소로 계정이 두 개 생긴다
@@ -87,5 +132,15 @@ public class AuthService {
 
     private boolean exceedsBcryptLimit(String password) {
         return password.getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_BYTES;
+    }
+
+    private IssuedTokens issueTokens(long userId) {
+        String accessToken = jwtProvider.createAccessToken(userId);
+        String refreshToken = refreshTokenGenerator.generateToken();
+
+        refreshTokenRepository.save(userId, refreshTokenGenerator.hashToken(refreshToken),
+                Instant.now().plus(refreshTokenExpiration));
+
+        return new IssuedTokens(accessToken, refreshToken, accessTokenExpiration.toSeconds());
     }
 }

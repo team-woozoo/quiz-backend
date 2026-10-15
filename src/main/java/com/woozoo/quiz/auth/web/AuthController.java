@@ -27,7 +27,18 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public LoginResponse login(@Valid @RequestBody LoginRequest request) {
-        return new LoginResponse(authService.login(request.toCommand()));
+    public TokenResponse login(@Valid @RequestBody LoginRequest request) {
+        return TokenResponse.from(authService.login(request.toCommand()));
+    }
+
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(@Valid @RequestBody RefreshRequest request) {
+        authService.logout(request.refreshToken());
+    }
+
+    @PostMapping("/refresh")
+    public TokenResponse refresh(@Valid @RequestBody RefreshRequest request) {
+        return TokenResponse.from(authService.refresh(request.refreshToken()));
     }
 }

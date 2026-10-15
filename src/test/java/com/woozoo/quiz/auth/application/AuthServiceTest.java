@@ -63,7 +63,7 @@ class AuthServiceTest {
     void 올바른_비밀번호로_로그인하면_그_사용자의_토큰을_발급한다() {
         long id = authService.signup(new SignupCommand("test@example.com", PASSWORD, "tester"));
 
-        String token = authService.login(new LoginCommand("test@example.com", PASSWORD));
+        String token = authService.login(new LoginCommand("test@example.com", PASSWORD)).accessToken();
 
         assertThat(jwtProvider.parseUserId(token)).contains(id);
     }
@@ -72,7 +72,7 @@ class AuthServiceTest {
     void 대문자로_가입하고_소문자로_로그인해도_된다() {
         long id = authService.signup(new SignupCommand("Test@Example.com", PASSWORD, "tester"));
 
-        String token = authService.login(new LoginCommand("test@example.com", PASSWORD));
+        String token = authService.login(new LoginCommand("test@example.com", PASSWORD)).accessToken();
 
         assertThat(jwtProvider.parseUserId(token)).contains(id);
     }
@@ -112,5 +112,52 @@ class AuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
+    }
+
+    private IssuedTokens signupAndLogin() {
+        authService.signup(new SignupCommand("test@example.com", PASSWORD, "tester"));
+        return authService.login(new LoginCommand("test@example.com", PASSWORD));
+    }
+
+    private void assertRefreshRejected(String refreshToken) {
+        assertThatThrownBy(() -> authService.refresh(refreshToken))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+    }
+
+    @Test
+    void 로그인하면_받은_Refresh_토큰으로_같은_사용자의_토큰을_다시_발급받는다() {
+        IssuedTokens loggedIn = signupAndLogin();
+        long userId = jwtProvider.parseUserId(loggedIn.accessToken()).orElseThrow();
+
+        IssuedTokens refreshed = authService.refresh(loggedIn.refreshToken());
+
+        assertThat(jwtProvider.parseUserId(refreshed.accessToken())).contains(userId);
+        assertThat(refreshed.refreshToken()).isNotEqualTo(loggedIn.refreshToken());
+        assertThat(refreshed.expiresIn()).isEqualTo(1800);
+    }
+
+    @Test
+    void 한_번_쓴_Refresh_토큰으로는_다시_발급받지_못한다() {
+        IssuedTokens loggedIn = signupAndLogin();
+        authService.refresh(loggedIn.refreshToken());
+
+        assertRefreshRejected(loggedIn.refreshToken());
+    }
+
+    @Test
+    void 로그아웃한_Refresh_토큰으로는_다시_발급받지_못한다() {
+        IssuedTokens loggedIn = signupAndLogin();
+
+        authService.logout(loggedIn.refreshToken());
+
+        assertRefreshRejected(loggedIn.refreshToken());
+    }
+
+    @Test
+    void 모르는_Refresh_토큰은_거부하고_로그아웃은_오류_없이_끝난다() {
+        assertRefreshRejected("unknown-token");
+        authService.logout("unknown-token");
     }
 }
