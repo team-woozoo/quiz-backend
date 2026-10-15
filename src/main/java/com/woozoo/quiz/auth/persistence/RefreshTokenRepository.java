@@ -23,10 +23,12 @@ public class RefreshTokenRepository {
                         """)
                 .param("userId", userId)
                 .param("tokenHash", tokenHash)
+                // Postgres 드라이버가 Instant 의 SQL 타입을 추론하지 못해 OffsetDateTime 으로 바꿔 넘긴다
                 .param("expiresAt", expiresAt.atOffset(ZoneOffset.UTC))
                 .update();
     }
 
+    // 확인과 폐기를 한 문장으로 한다. 같은 토큰으로 동시에 와도 DB 가 차례로 처리해 하나만 user_id 를 받는다
     public Optional<Long> revoke(String tokenHash) {
         return jdbcClient.sql("""
                          UPDATE refresh_token SET revoked_at = now()
@@ -40,6 +42,7 @@ public class RefreshTokenRepository {
                 .optional();
     }
 
+    // 쓴 토큰을 지우지 않고 남겨 두는 이유다. 지우면 재사용이 와도 처음 보는 토큰과 구분하지 못한다
     public Optional<Long> findUserIdOfRevoked(String tokenHash) {
         return jdbcClient.sql("""
                          SELECT user_id
@@ -52,6 +55,7 @@ public class RefreshTokenRepository {
                 .optional();
     }
 
+    // 이미 폐기된 행은 건드리지 않아 원래 폐기 시각이 남는다
     public void revokeAllByUserId(long userId) {
         jdbcClient.sql("""
                 UPDATE refresh_token SET revoked_at = now()

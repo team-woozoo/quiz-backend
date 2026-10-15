@@ -103,10 +103,13 @@ public class AuthService {
         return issueTokens(user.get().id());
     }
 
+    // 아무것도 내주지 않으므로 결과를 확인하지 않는다. 없거나 이미 폐기된 토큰이어도 같은 결과라 재시도에 안전하다
     public void logout(String refreshToken) {
         refreshTokenRepository.revoke(refreshTokenGenerator.hashToken(refreshToken));
     }
 
+    // 폐기와 새 토큰 저장을 한 트랜잭션으로 묶는다. 다만 재사용을 감지해 토큰을 모두 폐기한 뒤 던지는
+    // BusinessException 이 그 폐기까지 되돌리지 않도록 롤백 대상에서 뺀다 (RefreshTokenReuseTest 가 지킨다)
     @Transactional(noRollbackFor = BusinessException.class)
     public IssuedTokens refresh(String refreshToken) {
         String hash = refreshTokenGenerator.hashToken(refreshToken);
@@ -122,6 +125,7 @@ public class AuthService {
                     refreshTokenRepository.revokeAllByUserId(ownerId);
                 });
 
+        // 없는 토큰, 만료, 재사용을 같은 오류로 답해 무슨 일이 일어났는지 드러내지 않는다
         throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
     }
 
@@ -138,6 +142,7 @@ public class AuthService {
         String accessToken = jwtProvider.createAccessToken(userId);
         String refreshToken = refreshTokenGenerator.generateToken();
 
+        // 발급할 때마다 만료를 다시 잡아(슬라이딩), 앱을 계속 쓰면 로그인이 유지된다
         refreshTokenRepository.save(userId, refreshTokenGenerator.hashToken(refreshToken),
                 Instant.now().plus(refreshTokenExpiration));
 
