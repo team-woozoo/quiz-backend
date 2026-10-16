@@ -2,8 +2,14 @@ package com.woozoo.quiz.quiz.persistence;
 
 import com.woozoo.quiz.quiz.domain.NewQuestion;
 import com.woozoo.quiz.quiz.domain.NewQuiz;
+import com.woozoo.quiz.quiz.domain.StoredOption;
+import com.woozoo.quiz.quiz.domain.StoredQuestion;
+import com.woozoo.quiz.quiz.domain.StoredQuiz;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
 
 @Repository
 public class QuizRepository {
@@ -59,5 +65,45 @@ public class QuizRepository {
                 .param("content", content)
                 .param("isCorrect", isCorrect)
                 .update();
+    }
+
+    public Optional<StoredQuiz> findById(long quizId) {
+        return jdbcClient.sql("""
+                        SELECT id, user_id, material_id, kind, format, difficulty
+                        FROM quiz
+                        WHERE id = :quizId
+                        """)
+                .param("quizId", quizId)
+                .query(StoredQuiz.class)
+                .optional();
+    }
+
+    public List<StoredQuestion> findQuestions(long quizId) {
+        return jdbcClient.sql("""
+                        SELECT q.id, q.order_no, q.content, q.cognitive_type, q.explanation, q.source_quote,
+                               c.page_no AS source_page_no, mc.name AS concept_name
+                        FROM question q
+                        JOIN material_chunk c ON c.id = q.source_chunk_id
+                        JOIN material_concept mc ON mc.id = q.material_concept_id
+                        WHERE q.quiz_id = :quizId
+                        ORDER BY q.order_no
+                        """)
+                .param("quizId", quizId)
+                .query(StoredQuestion.class)
+                .list();
+    }
+
+    // 문제마다 따로 조회하지 않고 퀴즈의 보기를 한 번에 가져온다
+    public List<StoredOption> findOptions(long quizId) {
+        return jdbcClient.sql("""
+                        SELECT o.id, o.question_id, o.order_no, o.content, o.is_correct
+                        FROM question_option o
+                        JOIN question q ON q.id = o.question_id
+                        WHERE q.quiz_id = :quizId
+                        ORDER BY q.order_no, o.order_no
+                        """)
+                .param("quizId", quizId)
+                .query(StoredOption.class)
+                .list();
     }
 }
