@@ -149,6 +149,23 @@ class GenerationJobRepositoryTest {
     }
 
     @Test
+    void 끝나지_않은_작업만_한꺼번에_실패로_바꾼다() {
+        long pendingJobId = createJob();
+        long processingJobId = createJob();
+        long doneJobId = createJob();
+        generationJobRepository.markProcessing(processingJobId);
+        generationJobRepository.markProcessing(doneJobId);
+        generationJobRepository.markDone(doneJobId, insertQuiz());
+
+        // 다른 테스트가 남긴 행이 있을 수 있어 개수는 최소만 본다
+        assertThat(generationJobRepository.failAllUnfinished(ErrorCode.GENERATION_FAILED)).isGreaterThanOrEqualTo(2);
+
+        assertThat(find(pendingJobId).status()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(find(processingJobId).errorCode()).isEqualTo(ErrorCode.GENERATION_FAILED.name());
+        assertThat(find(doneJobId).status()).isEqualTo(GenerationStatus.DONE);
+    }
+
+    @Test
     void 실패한_작업은_다시_시작하지_않는다() {
         long jobId = createJob();
         generationJobRepository.markFailed(jobId, ErrorCode.INTERNAL_ERROR);
