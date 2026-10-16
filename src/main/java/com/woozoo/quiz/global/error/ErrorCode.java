@@ -17,6 +17,7 @@ public enum ErrorCode {
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "다시 로그인해 주세요"),
     MATERIAL_NOT_FOUND(HttpStatus.NOT_FOUND, "자료를 찾을 수 없습니다"),
     JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "생성 작업을 찾을 수 없습니다"),
+    QUIZ_NOT_FOUND(HttpStatus.NOT_FOUND, "퀴즈를 찾을 수 없습니다"),
     NO_VALID_QUESTIONS(HttpStatus.UNPROCESSABLE_CONTENT, "자료에서 문제를 만들지 못했습니다"),
     GENERATION_FAILED(HttpStatus.BAD_GATEWAY, "퀴즈 생성에 실패했습니다. 다시 시도해 주세요");
 
