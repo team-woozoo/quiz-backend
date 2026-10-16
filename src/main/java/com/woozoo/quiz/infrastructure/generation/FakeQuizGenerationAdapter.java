@@ -3,8 +3,10 @@ package com.woozoo.quiz.infrastructure.generation;
 import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
 import com.woozoo.quiz.quiz.port.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.*;
 
 @Component
@@ -12,8 +14,16 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
 
     private static final int MAX_QUOTE_LENGTH = 100;
 
+    private final Duration delay;
+
+    // 결과를 바로 주면 앱에서 생성 중 화면이 순식간에 지나가 확인할 수 없다. 실제 AI 처럼 기다렸다가 준다
+    public FakeQuizGenerationAdapter(@Value("${quiz.generation.fake-delay:0s}") Duration delay) {
+        this.delay = delay;
+    }
+
     @Override
     public GeneratedQuiz generateQuiz(QuizGenerationRequest request) {
+        waitForDelay();
         List<SourceChunk> chunks = request.chunks();
 
         Map<Integer, String> quotes = new LinkedHashMap<>();
@@ -40,6 +50,18 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
                     List.of(question)));
         }
         return new GeneratedQuiz(concepts);
+    }
+
+    private void waitForDelay() {
+        if (delay.isZero()) {
+            return;
+        }
+        try {
+            Thread.sleep(delay);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new QuizGenerationException("가짜 생성기가 기다리는 중에 중단됐다", e);
+        }
     }
 
     private GeneratedQuestion oxQuestion(SourceChunk chunk, String quote) {

@@ -10,6 +10,7 @@ import com.woozoo.quiz.quiz.port.QuizGenerationRequest;
 import com.woozoo.quiz.quiz.port.SourceChunk;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -25,7 +26,7 @@ class FakeQuizGenerationAdapterTest {
             new SourceChunk(3, "IP는 패킷을 목적지까지 전달한다.\n경로를 고른다."),
             new SourceChunk(4, "포트 번호로 프로세스를 구분한다.\n0~65535 범위를 쓴다."));
 
-    private final FakeQuizGenerationAdapter adapter = new FakeQuizGenerationAdapter();
+    private final FakeQuizGenerationAdapter adapter = new FakeQuizGenerationAdapter(Duration.ZERO);
 
     private static QuizGenerationRequest request(QuizFormat format, int questionCount, List<SourceChunk> chunks) {
         return new QuizGenerationRequest(chunks, format, Difficulty.NORMAL, questionCount, List.of());
