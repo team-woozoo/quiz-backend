@@ -1,11 +1,13 @@
 package com.woozoo.quiz.material.persistence;
 
 import com.woozoo.quiz.material.domain.MaterialChunk;
+import com.woozoo.quiz.material.domain.MaterialSummary;
 import com.woozoo.quiz.material.domain.NewMaterial;
 import com.woozoo.quiz.material.domain.StoredChunk;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 @Repository
@@ -54,6 +56,26 @@ public class MaterialRepository {
                     .param("content", chunk.content())
                     .update();
         }
+    }
+
+    // 최근에 올린 자료가 먼저 오게 한다
+    public List<MaterialSummary> findSummariesByOwnerId(long ownerId) {
+        return jdbcClient.sql("""
+                        SELECT m.id, m.title, m.original_filename, m.created_at,
+                               (SELECT count(*) FROM material_chunk c WHERE c.material_id = m.id) AS page_count
+                        FROM material m
+                        WHERE m.owner_id = :ownerId
+                        ORDER BY m.id DESC
+                        """)
+                .param("ownerId", ownerId)
+                // Postgres 드라이버는 timestamptz 를 Instant 로 바로 주지 않아 OffsetDateTime 으로 받아 바꾼다
+                .query((rs, rowNum) -> new MaterialSummary(
+                        rs.getLong("id"),
+                        rs.getString("title"),
+                        rs.getString("original_filename"),
+                        rs.getInt("page_count"),
+                        rs.getObject("created_at", OffsetDateTime.class).toInstant()))
+                .list();
     }
 
     public List<StoredChunk> findChunks(long materialId) {
