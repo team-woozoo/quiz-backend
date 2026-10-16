@@ -3,6 +3,7 @@ package com.woozoo.quiz.material.persistence;
 import com.woozoo.quiz.TestcontainersConfiguration;
 import com.woozoo.quiz.material.domain.FileType;
 import com.woozoo.quiz.material.domain.MaterialChunk;
+import com.woozoo.quiz.material.domain.MaterialSummary;
 import com.woozoo.quiz.material.domain.NewMaterial;
 import com.woozoo.quiz.material.domain.StoredChunk;
 import org.junit.jupiter.api.BeforeEach;
@@ -114,6 +115,29 @@ class MaterialRepositoryTest {
         assertThat(materialRepository.existsByIdAndOwnerId(materialId, ownerId)).isTrue();
         assertThat(materialRepository.existsByIdAndOwnerId(materialId, ownerId + 1)).isFalse();
         assertThat(materialRepository.existsByIdAndOwnerId(-1L, ownerId)).isFalse();
+    }
+
+    @Test
+    void 내_자료를_최근_것부터_페이지_수와_함께_조회한다() {
+        long older = materialRepository.save(new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF));
+        long newer = materialRepository.save(new NewMaterial(ownerId, "운영체제 6강", "06.pdf", FileType.PDF));
+        materialRepository.saveChunks(older, List.of(
+                new MaterialChunk(1, 1, "first page"),
+                new MaterialChunk(2, 2, "second page")));
+        long otherOwnerId = jdbcClient.sql("""
+                INSERT INTO users (email, password_hash, nickname)
+                VALUES ('other@example.com', 'hash', 'other')
+                RETURNING id
+                """)
+                .query(Long.class)
+                .single();
+        materialRepository.save(new NewMaterial(otherOwnerId, "남의 자료", "other.pdf", FileType.PDF));
+
+        List<MaterialSummary> result = materialRepository.findSummariesByOwnerId(ownerId);
+
+        assertThat(result).extracting(MaterialSummary::id, MaterialSummary::title, MaterialSummary::pageCount)
+                .containsExactly(tuple(newer, "운영체제 6강", 0), tuple(older, "운영체제 5강", 2));
+        assertThat(result).allSatisfy(summary -> assertThat(summary.createdAt()).isNotNull());
     }
 
     @Test
