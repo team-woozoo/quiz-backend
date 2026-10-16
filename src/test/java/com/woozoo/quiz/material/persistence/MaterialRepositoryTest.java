@@ -4,6 +4,7 @@ import com.woozoo.quiz.TestcontainersConfiguration;
 import com.woozoo.quiz.material.domain.FileType;
 import com.woozoo.quiz.material.domain.MaterialChunk;
 import com.woozoo.quiz.material.domain.NewMaterial;
+import com.woozoo.quiz.material.domain.StoredChunk;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -81,5 +83,44 @@ class MaterialRepositoryTest {
                 .list();
 
         assertThat(result).isEqualTo(chunks);
+    }
+
+    @Test
+    void 자료의_청크를_아이디와_함께_seq_순서로_조회한다() {
+        long materialId = materialRepository.save(
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF));
+        long otherMaterialId = materialRepository.save(
+                new NewMaterial(ownerId, "운영체제 6강", "06.pdf", FileType.PDF));
+
+        // 저장 순서와 seq 순서를 다르게 넣어 ORDER BY 를 확인한다
+        materialRepository.saveChunks(materialId, List.of(
+                new MaterialChunk(2, 2, "second page"),
+                new MaterialChunk(1, 1, "first page")));
+        materialRepository.saveChunks(otherMaterialId, List.of(
+                new MaterialChunk(1, 1, "other material")));
+
+        List<StoredChunk> result = materialRepository.findChunks(materialId);
+
+        assertThat(result).extracting(StoredChunk::seq, StoredChunk::content)
+                .containsExactly(tuple(1, "first page"), tuple(2, "second page"));
+        assertThat(result).extracting(StoredChunk::id).doesNotHaveDuplicates();
+    }
+
+    @Test
+    void 주인일_때만_자료가_있다고_답한다() {
+        long materialId = materialRepository.save(
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF));
+
+        assertThat(materialRepository.existsByIdAndOwnerId(materialId, ownerId)).isTrue();
+        assertThat(materialRepository.existsByIdAndOwnerId(materialId, ownerId + 1)).isFalse();
+        assertThat(materialRepository.existsByIdAndOwnerId(-1L, ownerId)).isFalse();
+    }
+
+    @Test
+    void 청크가_없는_자료는_빈_목록을_돌려준다() {
+        long materialId = materialRepository.save(
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF));
+
+        assertThat(materialRepository.findChunks(materialId)).isEmpty();
     }
 }

@@ -2,6 +2,7 @@ package com.woozoo.quiz.material.persistence;
 
 import com.woozoo.quiz.material.domain.MaterialChunk;
 import com.woozoo.quiz.material.domain.NewMaterial;
+import com.woozoo.quiz.material.domain.StoredChunk;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -30,6 +31,16 @@ public class MaterialRepository {
                 .single();
     }
 
+    public boolean existsByIdAndOwnerId(long materialId, long ownerId) {
+        return jdbcClient.sql("""
+                        SELECT EXISTS (SELECT 1 FROM material WHERE id = :materialId AND owner_id = :ownerId)
+                        """)
+                .param("materialId", materialId)
+                .param("ownerId", ownerId)
+                .query(Boolean.class)
+                .single();
+    }
+
     // TODO: 청크가 많아져 저장이 느려지면 NamedParameterJdbcTemplate.batchUpdate 로 바꾼다 (JdbcClient 에는 배치가 없다)
     public void saveChunks(long materialId, List<MaterialChunk> chunks) {
         for (MaterialChunk chunk : chunks) {
@@ -43,5 +54,17 @@ public class MaterialRepository {
                     .param("content", chunk.content())
                     .update();
         }
+    }
+
+    public List<StoredChunk> findChunks(long materialId) {
+        return jdbcClient.sql("""
+                        SELECT id, seq, content
+                        FROM material_chunk
+                        WHERE material_id = :materialId
+                        ORDER BY seq
+                        """)
+                .param("materialId", materialId)
+                .query(StoredChunk.class)
+                .list();
     }
 }

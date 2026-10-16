@@ -16,6 +16,7 @@ public class UserController {
         this.userService = userService;
     }
 
+    // 주소로 id 를 받지 않고 토큰의 사용자만 조회해, 남의 정보를 요청할 방법을 없앤다
     @GetMapping("/me")
     public MeResponse getMe(@AuthenticationPrincipal Long userId) {
         return MeResponse.from(userService.getMe(userId));
