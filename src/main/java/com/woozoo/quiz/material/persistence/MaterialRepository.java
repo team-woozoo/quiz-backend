@@ -2,6 +2,7 @@ package com.woozoo.quiz.material.persistence;
 
 import com.woozoo.quiz.material.domain.MaterialChunk;
 import com.woozoo.quiz.material.domain.NewMaterial;
+import com.woozoo.quiz.material.domain.StoredChunk;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -43,5 +44,17 @@ public class MaterialRepository {
                     .param("content", chunk.content())
                     .update();
         }
+    }
+
+    public List<StoredChunk> findChunks(long materialId) {
+        return jdbcClient.sql("""
+                        SELECT id, seq, content
+                        FROM material_chunk
+                        WHERE material_id = :materialId
+                        ORDER BY seq
+                        """)
+                .param("materialId", materialId)
+                .query(StoredChunk.class)
+                .list();
     }
 }
