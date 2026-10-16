@@ -1,6 +1,7 @@
 package com.woozoo.quiz.infrastructure.generation;
 
 import com.woozoo.quiz.quiz.domain.CognitiveType;
+import com.woozoo.quiz.quiz.domain.QuizFormat;
 import com.woozoo.quiz.quiz.port.*;
 import org.springframework.stereotype.Component;
 
@@ -10,7 +11,6 @@ import java.util.*;
 public class FakeQuizGenerationAdapter implements QuizGenerationPort {
 
     private static final int MAX_QUOTE_LENGTH = 100;
-    private static final int MULTIPLE_CHOICE_OPTION_COUNT = 4;
 
     @Override
     public GeneratedQuiz generateQuiz(QuizGenerationRequest request) {
@@ -54,6 +54,7 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
     }
 
     private GeneratedQuestion multipleChoiceQuestion(SourceChunk chunk, Map<Integer, String> quotes) {
+        int optionCount = QuizFormat.MULTIPLE_CHOICE.optionCount();
         String answer = quotes.get(chunk.seq());
 
         List<String> wrongs = new ArrayList<>();
@@ -64,10 +65,10 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
             }
             wrongs.add(wrong);
 
-            if (wrongs.size() >= MULTIPLE_CHOICE_OPTION_COUNT - 1) break;
+            if (wrongs.size() >= optionCount - 1) break;
         }
 
-        while (wrongs.size() < MULTIPLE_CHOICE_OPTION_COUNT - 1) {
+        while (wrongs.size() < optionCount - 1) {
             wrongs.add("강의자료에 없는 내용입니다 " + (wrongs.size() + 1));
         }
 
@@ -77,7 +78,7 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
             options.add(new GeneratedOption(wrong, false));
         }
 
-        int answerIndex = chunk.seq() % MULTIPLE_CHOICE_OPTION_COUNT;
+        int answerIndex = chunk.seq() % optionCount;
 
         options.add(answerIndex, new GeneratedOption(answer, true));
 
@@ -94,9 +95,9 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
         String firstLine = content.split("\\r?\\n")[0].strip();
 
         if (firstLine.length() > MAX_QUOTE_LENGTH) {
-            return firstLine.substring(0, MAX_QUOTE_LENGTH);
+            return firstLine.substring(0, MAX_QUOTE_LENGTH).strip();
         }
 
-        return firstLine.strip();
+        return firstLine;
     }
 }
