@@ -31,6 +31,16 @@ public class MaterialRepository {
                 .single();
     }
 
+    public boolean existsByIdAndOwnerId(long materialId, long ownerId) {
+        return jdbcClient.sql("""
+                        SELECT EXISTS (SELECT 1 FROM material WHERE id = :materialId AND owner_id = :ownerId)
+                        """)
+                .param("materialId", materialId)
+                .param("ownerId", ownerId)
+                .query(Boolean.class)
+                .single();
+    }
+
     // TODO: 청크가 많아져 저장이 느려지면 NamedParameterJdbcTemplate.batchUpdate 로 바꾼다 (JdbcClient 에는 배치가 없다)
     public void saveChunks(long materialId, List<MaterialChunk> chunks) {
         for (MaterialChunk chunk : chunks) {
