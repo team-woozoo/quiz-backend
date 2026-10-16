@@ -17,6 +17,7 @@ public class GeneratedQuizValidator {
     private static final int MAX_CONCEPT_NAME_LENGTH = 255;
 
     public GeneratedQuiz validate(QuizGenerationRequest request, GeneratedQuiz quiz) {
+        // 원문은 청크마다 한 번만 정리해 둔다. 그래서 isQuoteInSource 에서는 인용문만 정리한다
         Map<Integer,String> normalizedContentBySeq = new HashMap<>();
         List<SourceChunk> chunks = request.chunks();
         for (SourceChunk chunk : chunks) {
@@ -122,6 +123,7 @@ public class GeneratedQuizValidator {
         return options != null && options.size() == format.optionCount();
     }
 
+    // 정답이 둘이면 uq_question_option_one_correct 에 걸려 저장 전체가 실패한다
     private boolean hasExactlyOneAnswer(List<GeneratedOption> options) {
         return options.stream().filter(GeneratedOption::isCorrect).count() == 1;
     }
@@ -130,6 +132,7 @@ public class GeneratedQuizValidator {
         return options.stream().map(GeneratedOption::content).distinct().count() == options.size();
     }
 
+    // 전부 NOT NULL 컬럼이다. 하나라도 비면 INSERT 가 실패한다
     private boolean hasRequiredFields(GeneratedQuestion question) {
         return !isBlank(question.content())
                 && !isBlank(question.explanation())
@@ -151,6 +154,7 @@ public class GeneratedQuizValidator {
         return sourceContent.contains(normalize(sourceQuote));
     }
 
+    // PDF 원문은 문장 중간에 줄바꿈이 있고 AI 는 그걸 공백으로 바꿔 인용하곤 해서, 양쪽 공백을 한 칸으로 맞춘 뒤 비교한다
     private String normalize(String text) {
         return text.replaceAll("\\s+", " ").strip();
     }

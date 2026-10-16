@@ -81,6 +81,7 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
 
         List<String> wrongs = new ArrayList<>();
 
+        // 슬라이드마다 제목이 반복되면 다른 청크의 인용문이 정답과 같을 수 있다. 그대로 쓰면 정답이 둘이 된다
         for (String wrong : quotes.values()) {
             if (answer.equals(wrong) || wrongs.contains(wrong)) {
                 continue;
@@ -100,6 +101,7 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
             options.add(new GeneratedOption(wrong, false));
         }
 
+        // 정답이 늘 같은 자리에 있으면 앱에서 채점 화면을 확인하기 어려워 seq 로 자리를 돌린다
         int answerIndex = chunk.seq() % optionCount;
 
         options.add(answerIndex, new GeneratedOption(answer, true));
@@ -113,6 +115,7 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
                 chunk.seq());
     }
 
+    // 원문을 그대로 잘라 써서 인용문 검사를 늘 통과한다. 첫 줄은 대개 슬라이드 제목이라 짧다
     private String extractQuote(String content) {
         String firstLine = content.split("\\r?\\n")[0].strip();
 
