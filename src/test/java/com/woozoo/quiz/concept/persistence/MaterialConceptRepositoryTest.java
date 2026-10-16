@@ -5,6 +5,7 @@ import com.woozoo.quiz.auth.domain.NewUser;
 import com.woozoo.quiz.auth.persistence.UserRepository;
 import com.woozoo.quiz.concept.domain.MaterialConcept;
 import com.woozoo.quiz.material.domain.FileType;
+import com.woozoo.quiz.material.domain.MaterialChunk;
 import com.woozoo.quiz.material.domain.NewMaterial;
 import com.woozoo.quiz.material.persistence.MaterialRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -75,5 +76,41 @@ class MaterialConceptRepositoryTest {
     @Test
     void 개념이_없는_자료는_빈_목록을_돌려준다() {
         assertThat(materialConceptRepository.findByMaterialId(materialId)).isEmpty();
+    }
+
+    @Test
+    void 같은_자료에_같은_이름이면_기존_개념_아이디를_돌려주고_처음_설명을_둔다() {
+        long first = materialConceptRepository.findOrCreate(materialId, "TCP 연결", "처음 설명");
+        long second = materialConceptRepository.findOrCreate(materialId, "TCP 연결", "나중 설명");
+
+        assertThat(second).isEqualTo(first);
+        assertThat(materialConceptRepository.findByMaterialId(materialId))
+                .singleElement()
+                .extracting(MaterialConcept::description)
+                .isEqualTo("처음 설명");
+    }
+
+    @Test
+    void 다른_자료면_같은_이름이라도_새_개념을_만든다() {
+        long first = materialConceptRepository.findOrCreate(materialId, "TCP 연결", "설명");
+        long other = materialConceptRepository.findOrCreate(otherMaterialId, "TCP 연결", "설명");
+
+        assertThat(other).isNotEqualTo(first);
+    }
+
+    @Test
+    void 이미_이어진_청크를_다시_이어도_한_번만_남는다() {
+        long conceptId = materialConceptRepository.findOrCreate(materialId, "TCP 연결", "설명");
+        materialRepository.saveChunks(materialId, List.of(new MaterialChunk(1, 1, "첫 페이지")));
+        long chunkId = materialRepository.findChunks(materialId).getFirst().id();
+
+        materialConceptRepository.linkChunk(conceptId, chunkId);
+        materialConceptRepository.linkChunk(conceptId, chunkId);
+
+        Long count = jdbcClient.sql("SELECT count(*) FROM concept_chunk WHERE material_concept_id = :conceptId")
+                .param("conceptId", conceptId)
+                .query(Long.class)
+                .single();
+        assertThat(count).isEqualTo(1L);
     }
 }
