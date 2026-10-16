@@ -107,6 +107,16 @@ class MaterialRepositoryTest {
     }
 
     @Test
+    void 주인일_때만_자료가_있다고_답한다() {
+        long materialId = materialRepository.save(
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF));
+
+        assertThat(materialRepository.existsByIdAndOwnerId(materialId, ownerId)).isTrue();
+        assertThat(materialRepository.existsByIdAndOwnerId(materialId, ownerId + 1)).isFalse();
+        assertThat(materialRepository.existsByIdAndOwnerId(-1L, ownerId)).isFalse();
+    }
+
+    @Test
     void 청크가_없는_자료는_빈_목록을_돌려준다() {
         long materialId = materialRepository.save(
                 new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF));
