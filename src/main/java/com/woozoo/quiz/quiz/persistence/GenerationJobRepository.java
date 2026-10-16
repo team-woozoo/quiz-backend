@@ -74,6 +74,18 @@ public class GenerationJobRepository {
                 .update() == 1;
     }
 
+    // 끝나지 않은 작업을 한꺼번에 실패로 바꾸고, 바꾼 개수를 돌려준다
+    public int failAllUnfinished(ErrorCode errorCode) {
+        return jdbcClient.sql("""
+                UPDATE generation_job
+                SET status = 'FAILED', error_code = :errorCode, error_message = :errorMessage, finished_at = now()
+                WHERE status IN ('PENDING', 'PROCESSING')
+                """)
+                .param("errorCode", errorCode.name())
+                .param("errorMessage", errorCode.getMessage())
+                .update();
+    }
+
     public Optional<GenerationJob> findById(long jobId) {
         return jdbcClient.sql("""
                 SELECT id, user_id, material_id, kind, format, difficulty, status, quiz_id, error_code
