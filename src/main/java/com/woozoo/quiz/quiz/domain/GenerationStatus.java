@@ -4,5 +4,7 @@ public enum GenerationStatus {
     PENDING,
     PROCESSING,
     DONE,
-    FAILED
+    FAILED;
+
+    public boolean isFinished() { return this == DONE || this == FAILED; }
 }
