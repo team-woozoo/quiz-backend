@@ -3,6 +3,7 @@ package com.woozoo.quiz.global.config;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.media.ComposedSchema;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.IntegerSchema;
 import io.swagger.v3.oas.models.media.MediaType;
@@ -13,11 +14,15 @@ import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springdoc.core.customizers.OpenApiCustomizer;
+import org.springdoc.core.customizers.PropertyCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 // 앱은 이 문서로 모델과 API 코드를 생성한다(swagger_parser). 그래서 필수 여부와 null 허용을 규약과 같게 적는다
 @Configuration
@@ -51,12 +56,70 @@ public class OpenApiConfig {
     // 응답은 규약대로 모든 필드를 늘 보낸다. 표시가 없으면 생성기가 모든 필드를 null 가능으로 만들어,
     // 이름이 Response 로 끝나는 스키마는 모든 필드를 필수로 적는다. null 이 될 수 있는 필드는 각 레코드에서 nullable 로 표시한다
     @Bean
+    @SuppressWarnings({"rawtypes", "unchecked"})
     public OpenApiCustomizer responseFieldsRequired() {
-        return openApi -> openApi.getComponents().getSchemas().forEach((name, schema) -> {
-            if (name.endsWith("Response") && schema.getProperties() != null) {
-                schema.setRequired(new ArrayList<>(schema.getProperties().keySet()));
+        return openApi -> {
+            Map<String, Schema> schemas = openApi.getComponents().getSchemas();
+            schemas.forEach((name, schema) -> {
+                if (name.endsWith("Response") && schema.getProperties() != null) {
+                    schema.setRequired(new ArrayList<>(schema.getProperties().keySet()));
+                }
+            });
+            cleanUpNullableReferenceTargets(schemas);
+        };
+    }
+
+    // swagger-core 는 참조 필드의 @Schema(nullable, description) 을 가리키는 스키마 자체에도 붙인다.
+    // 그러면 그 스키마를 어디서 쓰든 null 가능처럼 보여, 감싼 필드에만 남기고 스키마에서는 지운다
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void cleanUpNullableReferenceTargets(Map<String, Schema> schemas) {
+        schemas.values().stream()
+                .filter(schema -> schema.getProperties() != null)
+                .flatMap(schema -> ((Map<String, Schema>) schema.getProperties()).values().stream())
+                .filter(property -> Boolean.TRUE.equals(property.getNullable()) && property.getAllOf() != null)
+                .forEach(property -> {
+                    String ref = ((Schema<?>) property.getAllOf().getFirst()).get$ref();
+                    Schema<?> target = schemas.get(ref.substring(ref.lastIndexOf('/') + 1));
+                    if (target != null) {
+                        target.setNullable(null);
+                        if (Objects.equals(target.getDescription(), property.getDescription())) {
+                            target.setDescription(null);
+                        }
+                    }
+                });
+    }
+
+    // OpenAPI 3.0 은 다른 스키마를 가리키는 필드($ref) 옆의 nullable 을 무시한다. springdoc 도 그 표시를 빼 버려,
+    // @Schema(nullable = true) 가 붙은 참조 필드는 allOf 로 한 번 감싸 null 가능을 남긴다(swagger_parser 가 읽는 모양)
+    @Bean
+    public PropertyCustomizer nullableReferences() {
+        return (property, type) -> {
+            if (property == null || property.get$ref() == null || !isMarkedNullable(type.getCtxAnnotations())) {
+                return property;
             }
-        });
+            ComposedSchema nullableReference = new ComposedSchema();
+            nullableReference.addAllOfItem(new Schema<>().$ref(property.get$ref()));
+            nullableReference.setNullable(true);
+            nullableReference.setDescription(descriptionOf(type.getCtxAnnotations()));
+            return nullableReference;
+        };
+    }
+
+    private static boolean isMarkedNullable(java.lang.annotation.Annotation[] annotations) {
+        return annotations != null && Arrays.stream(annotations)
+                .filter(io.swagger.v3.oas.annotations.media.Schema.class::isInstance)
+                .map(io.swagger.v3.oas.annotations.media.Schema.class::cast)
+                .anyMatch(io.swagger.v3.oas.annotations.media.Schema::nullable);
+    }
+
+    private static String descriptionOf(java.lang.annotation.Annotation[] annotations) {
+        return Arrays.stream(annotations)
+                .filter(io.swagger.v3.oas.annotations.media.Schema.class::isInstance)
+                .map(io.swagger.v3.oas.annotations.media.Schema.class::cast)
+                .map(io.swagger.v3.oas.annotations.media.Schema::description)
+                .filter(description -> !description.isBlank())
+                .findFirst()
+                .orElse(null);
     }
 
     // 모든 API 에 오류 응답 모양을 붙여, 앱이 오류 모델도 같이 생성하게 한다.
