@@ -21,6 +21,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -32,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Import({TestcontainersConfiguration.class, SyncTaskExecutorConfiguration.class})
 @SpringBootTest
 @Transactional
+@RecordApplicationEvents
 class QuizGenerationServiceTest {
 
     @Autowired
@@ -42,6 +45,8 @@ class QuizGenerationServiceTest {
     MaterialRepository materialRepository;
     @Autowired
     JdbcClient jdbcClient;
+    @Autowired
+    ApplicationEvents applicationEvents;
 
     long userId;
     long otherUserId;
@@ -87,6 +92,16 @@ class QuizGenerationServiceTest {
                 SELECT count(*) FROM concept_chunk cc JOIN material_concept mc ON mc.id = cc.material_concept_id
                 WHERE mc.material_id = :id
                 """, materialId)).isEqualTo(3);
+    }
+
+    // 구독 중인 앱이 생성 중과 완료를 한 번씩 받으려면 상태가 바뀔 때마다 알려야 한다
+    @Test
+    void 생성이_끝나면_PROCESSING_과_DONE_을_한_번씩_알린다() {
+        long jobId = request(QuizFormat.OX);
+
+        assertThat(applicationEvents.stream(JobStatusChanged.class)
+                .filter(event -> event.jobId() == jobId))
+                .hasSize(2);
     }
 
     @Test
