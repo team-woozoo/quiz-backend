@@ -1,6 +1,7 @@
 package com.woozoo.quiz.quiz.web;
 
 import com.woozoo.quiz.quiz.application.QuizDetail;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
@@ -11,6 +12,7 @@ import java.util.List;
 
 public record QuizResponse(
         long quizId,
+        @Schema(nullable = true, description = "약점 퀴즈처럼 자료 없이 만든 퀴즈는 null")
         Long materialId,
         QuizFormat format,
         Difficulty difficulty,
@@ -34,6 +36,7 @@ public record QuizResponse(
             String conceptName,
             String explanation,
             String sourceQuote,
+            @Schema(nullable = true, description = "근거가 있는 원본 PDF 쪽 번호")
             Integer sourcePageNo,
             List<OptionResponse> options) {
 
