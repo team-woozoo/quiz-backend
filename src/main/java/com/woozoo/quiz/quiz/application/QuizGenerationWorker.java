@@ -15,6 +15,7 @@ import com.woozoo.quiz.quiz.port.QuizGenerationRequest;
 import com.woozoo.quiz.quiz.port.SourceChunk;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
@@ -34,6 +35,7 @@ public class QuizGenerationWorker {
     private final GeneratedQuizValidator generatedQuizValidator;
     private final QuizWriter quizWriter;
     private final int questionCount;
+    private final ApplicationEventPublisher eventPublisher;
 
     public QuizGenerationWorker(GenerationJobRepository generationJobRepository,
                                 MaterialRepository materialRepository,
@@ -41,7 +43,8 @@ public class QuizGenerationWorker {
                                 QuizGenerationPort quizGenerationPort,
                                 GeneratedQuizValidator generatedQuizValidator,
                                 QuizWriter quizWriter,
-                                @Value("${quiz.generation.question-count}") int questionCount) {
+                                @Value("${quiz.generation.question-count}") int questionCount,
+                                ApplicationEventPublisher eventPublisher) {
         this.generationJobRepository = generationJobRepository;
         this.materialRepository = materialRepository;
         this.materialConceptRepository = materialConceptRepository;
@@ -49,6 +52,7 @@ public class QuizGenerationWorker {
         this.generatedQuizValidator = generatedQuizValidator;
         this.quizWriter = quizWriter;
         this.questionCount = questionCount;
+        this.eventPublisher = eventPublisher;
     }
 
     // 트랜잭션은 QuizWriter 의 저장에만 있다. 수십 초 걸리는 AI 호출 동안 DB 연결을 잡아 두지 않으려는 것이다
@@ -57,16 +61,18 @@ public class QuizGenerationWorker {
         if (!generationJobRepository.markProcessing(jobId)) {
             return;
         }
+        eventPublisher.publishEvent(new JobStatusChanged(jobId));
         try {
             run(jobId);
+            eventPublisher.publishEvent(new JobStatusChanged(jobId));
         } catch (QuizGenerationException e) {
             log.warn("퀴즈 생성 호출 실패: jobId={}", jobId, e);
-            generationJobRepository.markFailed(jobId, ErrorCode.GENERATION_FAILED);
+            fail(jobId, ErrorCode.GENERATION_FAILED);
         } catch (BusinessException e) {
-            generationJobRepository.markFailed(jobId, e.getErrorCode());
+            fail(jobId, e.getErrorCode());
         } catch (RuntimeException e) {
             log.error("퀴즈 생성 중 예상하지 못한 오류: jobId={}", jobId, e);
-            generationJobRepository.markFailed(jobId, ErrorCode.INTERNAL_ERROR);
+            fail(jobId, ErrorCode.INTERNAL_ERROR);
         }
     }
 
@@ -98,5 +104,10 @@ public class QuizGenerationWorker {
         return materialConceptRepository.findByMaterialId(materialId).stream()
                 .map(concept -> new ExistingConcept(concept.name(), concept.description()))
                 .toList();
+    }
+
+    private void fail(long jobId, ErrorCode errorCode) {
+        generationJobRepository.markFailed(jobId, errorCode);
+        eventPublisher.publishEvent(new JobStatusChanged(jobId));
     }
 }

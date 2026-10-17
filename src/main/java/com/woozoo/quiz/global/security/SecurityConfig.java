@@ -2,6 +2,7 @@ package com.woozoo.quiz.global.security;
 
 import com.woozoo.quiz.global.error.BusinessException;
 import com.woozoo.quiz.global.error.ErrorCode;
+import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -39,6 +40,8 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // /error 를 막아 두면 실제 오류가 401 로 가려진다
                 .authorizeHttpRequests(auth -> auth
+                        // SSE 를 마무리하는 내부 디스패치는 JwtFilter 를 다시 거치지 않는다. 토큰은 첫 요청에서 이미 검사했다
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                         .requestMatchers("/auth/**", "/swagger-ui/**",
                                 "/swagger-ui.html", "/v3/api-docs/**", "/error").permitAll()
                         .anyRequest().authenticated())

@@ -9,6 +9,8 @@ import com.woozoo.quiz.quiz.domain.QuizKind;
 import com.woozoo.quiz.quiz.persistence.GenerationJobRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
+
 @Service
 public class QuizGenerationService {
 
@@ -42,5 +44,10 @@ public class QuizGenerationService {
         return generationJobRepository.findById(jobId)
                 .filter(job -> job.userId() == userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.JOB_NOT_FOUND));
+    }
+
+    // 주인을 확인하지 않는다. 이미 주인 확인을 거친 연결로 보낼 때만 쓰고, 요청을 받는 곳에서는 getJob 을 쓴다
+    public Optional<GenerationJob> findJob(long jobId) {
+        return generationJobRepository.findById(jobId);
     }
 }

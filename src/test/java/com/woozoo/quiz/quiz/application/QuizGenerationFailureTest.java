@@ -27,6 +27,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -39,6 +41,7 @@ import static org.mockito.BDDMockito.given;
 @Import({TestcontainersConfiguration.class, SyncTaskExecutorConfiguration.class})
 @SpringBootTest
 @Transactional
+@RecordApplicationEvents
 class QuizGenerationFailureTest {
 
     @MockitoBean
@@ -52,6 +55,8 @@ class QuizGenerationFailureTest {
     MaterialRepository materialRepository;
     @Autowired
     JdbcClient jdbcClient;
+    @Autowired
+    ApplicationEvents applicationEvents;
 
     long userId;
     long materialId;
@@ -101,6 +106,18 @@ class QuizGenerationFailureTest {
         assertThat(job.status()).isEqualTo(GenerationStatus.FAILED);
         assertThat(job.errorCode()).isEqualTo(ErrorCode.NO_VALID_QUESTIONS.name());
         assertThat(quizCount()).isZero();
+    }
+
+    @Test
+    void 실패하면_PROCESSING_과_FAILED_를_한_번씩_알린다() {
+        given(quizGenerationPort.generateQuiz(any()))
+                .willThrow(new QuizGenerationException("호출 실패", new RuntimeException()));
+
+        GenerationJob job = requestAndGetJob();
+
+        assertThat(applicationEvents.stream(JobStatusChanged.class)
+                .filter(event -> event.jobId() == job.id()))
+                .hasSize(2);
     }
 
     @Test
