@@ -69,6 +69,10 @@ class ApiDocsTest {
         assertThat(property("GenerationJobResponse", "errorCode")).containsEntry("nullable", true);
         assertThat(property("QuizResponse", "materialId")).containsEntry("nullable", true);
         assertThat(property("QuestionResponse", "sourcePageNo")).containsEntry("nullable", true);
+        assertThat(property("QuizSummaryResponse", "materialTitle")).containsEntry("nullable", true);
+        // 다른 스키마를 가리키는 필드는 OpenAPI 3.0 에서 allOf 로 감싸야 nullable 이 남는다
+        assertThat(property("QuizSummaryResponse", "lastSubmission")).containsEntry("nullable", true).containsKey("allOf");
+        assertThat(schema("LastSubmissionResponse")).doesNotContainKey("nullable");
 
         assertThat(property("GenerationJobResponse", "jobId")).doesNotContainKey("nullable");
         assertThat(property("GenerationJobResponse", "status")).doesNotContainKey("nullable");
