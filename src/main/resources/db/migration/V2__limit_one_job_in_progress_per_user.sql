@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX uq_generation_job_in_progress ON generation_job (user_id) WHERE status IN ('PENDING', 'PROCESSING');

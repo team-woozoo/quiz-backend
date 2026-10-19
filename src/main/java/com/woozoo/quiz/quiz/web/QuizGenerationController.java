@@ -39,7 +39,9 @@ public class QuizGenerationController {
             description = """
                     내 자료로 퀴즈 생성을 요청한다. 생성은 백그라운드에서 수십 초 걸려 202 와 jobId 를 바로 준다.
                     진행 상황은 GET /jobs/{jobId}/events 로 받고, DONE 이 되면 quizId 로 퀴즈를 조회한다.
-                    오류: INVALID_INPUT(400), MATERIAL_NOT_FOUND(404, 없거나 내 것이 아닌 자료), UNAUTHORIZED(401)""")
+                    생성 요청은 사용자마다 하루(한국 시간 자정 기준) 정해진 횟수까지이고, 진행 중인 작업이 있으면 끝난 뒤에 다시 요청한다.
+                    오류: INVALID_INPUT(400), MATERIAL_NOT_FOUND(404, 없거나 내 것이 아닌 자료),
+                    GENERATION_IN_PROGRESS(409, 진행 중인 작업이 있음), DAILY_GENERATION_LIMIT_EXCEEDED(429, 오늘 횟수를 다 씀), UNAUTHORIZED(401)""")
     @PostMapping("/materials/{materialId}/quizzes")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public GenerateQuizResponse generate(@AuthenticationPrincipal Long userId,

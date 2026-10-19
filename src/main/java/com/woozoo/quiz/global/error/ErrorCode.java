@@ -20,7 +20,9 @@ public enum ErrorCode {
     JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "생성 작업을 찾을 수 없습니다"),
     QUIZ_NOT_FOUND(HttpStatus.NOT_FOUND, "퀴즈를 찾을 수 없습니다"),
     NO_VALID_QUESTIONS(HttpStatus.UNPROCESSABLE_CONTENT, "자료에서 문제를 만들지 못했습니다"),
-    GENERATION_FAILED(HttpStatus.BAD_GATEWAY, "퀴즈 생성에 실패했습니다. 다시 시도해 주세요");
+    GENERATION_FAILED(HttpStatus.BAD_GATEWAY, "퀴즈 생성에 실패했습니다. 다시 시도해 주세요"),
+    DAILY_GENERATION_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "일일 퀴즈 생성 한도를 초과했습니다. 내일 다시 시도해 주세요"),
+    GENERATION_IN_PROGRESS(HttpStatus.CONFLICT, "이미 진행 중인 퀴즈 생성 작업이 있습니다");
 
     private final HttpStatus status;
     private final String message;
