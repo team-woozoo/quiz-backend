@@ -300,17 +300,79 @@ class GeneratedQuizValidatorTest {
         validateOx(concept("TCP", List.of(1), validOx("정상"), wrongQuote, otherWrongQuote, noAnswer),
                 concept("모르는 청크", List.of(99), validOx("청크 없음")));
 
-        assertThat(output).contains("문제 4개를 버렸다")
+        // 받은 5개 중 정상 1개만 남는다
+        assertThat(output).contains("받은 문제 5개, 남긴 문제 1개, 버린 문제 4개")
                 .contains("NO_KNOWN_CHUNK=1")
                 .contains("ANSWER_COUNT=1")
                 .contains("QUOTE_NOT_IN_SOURCE=2");
     }
 
+    // 10개를 요청했는데 1개만 남았을 때, 버린 것 없이 받은 것도 1개면 AI 가 적게 만든 것이다
     @Test
     @ExtendWith(OutputCaptureExtension.class)
-    void 버린_문제가_없으면_로그를_남기지_않는다(CapturedOutput output) {
+    void 버린_문제가_없어도_받은_수와_남긴_수를_로그로_남긴다(CapturedOutput output) {
         validateOx(concept("TCP", List.of(1), validOx("정상")));
 
-        assertThat(output).doesNotContain("버렸다");
+        assertThat(output).contains("받은 문제 1개, 남긴 문제 1개, 버린 문제 0개");
+    }
+
+    // 슬라이드에서 뽑은 원문 모양 그대로다. 목록, 단어 중간에 끼인 공백, 머리글과 데이터 행이 따로 나온 표가 있다
+    private static final SourceChunk SLIDE = new SourceChunk(3, """
+            엑셀 문서 구성
+
+            • 통합문서(W orkbook)
+            • 하나의 엑셀 문서(엑셀 파일)
+
+            • 셀(Cell)
+            • 엑셀에서 데이터가 기록되는 최소 저장 단위
+
+            버전 97 ~ 2007 2007 ~ 현재(OOXML)
+
+            Excel HSSF(Horrible Spread Sheet Format) XSSF(XML Spread Sheet Format)""");
+
+    private List<String> validateSlideQuotes(String... quotes) {
+        GeneratedQuestion[] questions = Arrays.stream(quotes)
+                .map(quote -> question(quote, quote, 3, oxOptions()))
+                .toArray(GeneratedQuestion[]::new);
+        QuizGenerationRequest slideRequest =
+                new QuizGenerationRequest(List.of(SLIDE), QuizFormat.OX, Difficulty.NORMAL, 10, List.of());
+        return contentsOf(validator.validate(slideRequest,
+                new GeneratedQuiz(List.of(concept("엑셀", List.of(3), questions)))));
+    }
+
+    // AI 는 목록의 제목 줄과 설명 줄을 이으며 글머리 기호를 다른 기호로 바꾸곤 한다. 글자는 원문 그대로라 통과시킨다
+    @Test
+    void 목록의_두_줄을_기호로_이은_인용문은_통과한다() {
+        assertThat(validateSlideQuotes("셀(Cell) - 엑셀에서 데이터가 기록되는 최소 저장 단위"))
+                .containsExactly("셀(Cell) - 엑셀에서 데이터가 기록되는 최소 저장 단위");
+    }
+
+    // PDF 추출이 단어 중간에 넣은 공백은 원문에만 있고, AI 는 붙여 쓴다
+    @Test
+    void 추출이_단어_중간에_넣은_공백과_달라도_통과한다() {
+        assertThat(validateSlideQuotes("통합문서(Workbook)")).containsExactly("통합문서(Workbook)");
+    }
+
+    // 전각 문자처럼 모양은 같고 코드만 다른 글자는 같은 글자로 본다
+    @Test
+    void 전각_문자로_쓴_인용문도_통과한다() {
+        assertThat(validateSlideQuotes("통합문서（Ｗｏｒｋｂｏｏｋ）")).containsExactly("통합문서（Ｗｏｒｋｂｏｏｋ）");
+    }
+
+    // 표의 머리글과 데이터 행에서 칸을 골라 엮으면 원문에 이어진 글자가 없다. 내용이 맞아도 근거로 보여 줄 수 없어 버린다
+    @Test
+    void 표의_칸을_골라_엮은_인용문은_버린다() {
+        assertThat(validateSlideQuotes("Excel 2007 ~ 현재(OOXML) XSSF(XML Spread Sheet Format)")).isEmpty();
+    }
+
+    // 기호만 남기면 비교할 글자가 없어 어느 원문에나 들어 있다고 나온다
+    @Test
+    void 글자_없이_기호만_있는_인용문은_버린다() {
+        assertThat(validateSlideQuotes("• - ...")).isEmpty();
+    }
+
+    @Test
+    void 기호를_무시해도_원문에_없는_글자가_있으면_버린다() {
+        assertThat(validateSlideQuotes("셀(Cell) - 엑셀에서 데이터를 저장하는 가장 작은 단위")).isEmpty();
     }
 }
