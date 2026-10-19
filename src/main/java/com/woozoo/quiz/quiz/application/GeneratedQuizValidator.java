@@ -5,6 +5,7 @@ import com.woozoo.quiz.quiz.port.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -12,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -19,6 +21,7 @@ import java.util.stream.Stream;
 public class GeneratedQuizValidator {
 
     private static final int MAX_CONCEPT_NAME_LENGTH = 255;
+    private static final Pattern NOT_LETTER_OR_DIGIT = Pattern.compile("[^\\p{L}\\p{N}]");
 
     // 문제를 버린 이유. 프롬프트를 고칠 때 어느 규칙에서 많이 떨어지는지 보려고 센다
     enum Rejection {
@@ -207,12 +210,17 @@ public class GeneratedQuizValidator {
         return conceptChunkSeqs.contains(sourceChunkSeq);
     }
 
+    // 기호만 있는 인용은 정리하면 빈 문자열이 되고, 빈 문자열은 어느 원문에나 들어 있다고 나와 막는다
     private boolean isQuoteInSource(String sourceQuote, String sourceContent) {
-        return sourceContent.contains(normalize(sourceQuote));
+        String quote = normalize(sourceQuote);
+        return !quote.isEmpty() && sourceContent.contains(quote);
     }
 
-    // PDF 원문은 문장 중간에 줄바꿈이 있고 AI 는 그걸 공백으로 바꿔 인용하곤 해서, 양쪽 공백을 한 칸으로 맞춘 뒤 비교한다
+    // 원문과 인용을 글자와 숫자만 남겨 비교한다. 지어낸 문장은 글자가 원문에 이어져 있지 않아 그대로 걸러진다.
+    // PDF 추출은 단어 중간에 줄바꿈이나 공백을 넣고(W orkbook), AI 는 목록의 두 줄을 이으며 글머리 기호를 '-' 로 바꾸곤 한다.
+    // 공백과 기호까지 맞추면 원문에 있는 문장도 떨어져서, 모양이 같은 문자를 NFKC 로 맞춘 뒤 글자와 숫자가 아닌 것은 지운다
     private String normalize(String text) {
-        return text.replaceAll("\\s+", " ").strip();
+        String unified = Normalizer.normalize(text, Normalizer.Form.NFKC);
+        return NOT_LETTER_OR_DIGIT.matcher(unified).replaceAll("");
     }
 }
