@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -90,7 +91,7 @@ public class GeneratedQuizValidator {
             validConcepts.add(new GeneratedConcept(
                     concept.name(), concept.description(), chunkSeqs, List.copyOf(validQuestions)));
         }
-        logRejected(rejected);
+        logResult(quiz, validConcepts, rejected);
         return new GeneratedQuiz(List.copyOf(validConcepts));
     }
 
@@ -100,13 +101,18 @@ public class GeneratedQuizValidator {
         }
     }
 
-    // 강의 내용은 남기지 않고 이유별 개수만 남긴다. 요청보다 많이 와서 남긴 문제는 버린 것으로 세지 않는다
-    private void logRejected(Map<Rejection, Integer> rejected) {
-        if (rejected.isEmpty()) {
-            return;
-        }
-        int total = rejected.values().stream().mapToInt(Integer::intValue).sum();
-        log.info("생성 결과 검증에서 문제 {}개를 버렸다: {}", total, rejected);
+    // 문제가 요청보다 적게 남았을 때, AI 가 적게 만든 것인지 검증에서 떨어진 것인지 가르려고 받은 수와 남긴 수를 같이 남긴다.
+    // 강의 내용은 남기지 않고 개수만 남긴다. 요청보다 많이 와서 남긴 문제는 버린 것으로 세지 않는다
+    private void logResult(GeneratedQuiz received, List<GeneratedConcept> validConcepts,
+                           Map<Rejection, Integer> rejected) {
+        int receivedCount = nullToEmpty(received.concepts()).stream()
+                .filter(Objects::nonNull)
+                .mapToInt(concept -> nullToEmpty(concept.questions()).size())
+                .sum();
+        int keptCount = validConcepts.stream().mapToInt(concept -> concept.questions().size()).sum();
+        int rejectedCount = rejected.values().stream().mapToInt(Integer::intValue).sum();
+        log.info("생성 결과 검증: 받은 문제 {}개, 남긴 문제 {}개, 버린 문제 {}개 {}",
+                receivedCount, keptCount, rejectedCount, rejected);
     }
 
     // 이름 빈 값은 mergeSameName 에서 이미 걸렀다. 이름은 VARCHAR(255) 라 넘으면 저장이 실패한다
