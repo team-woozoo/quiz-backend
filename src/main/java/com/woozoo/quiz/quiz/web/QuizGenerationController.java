@@ -66,7 +66,7 @@ public class QuizGenerationController {
             description = """
                     text/event-stream 으로 연결을 열어 둔다. 연결 즉시 현재 상태를 한 번 보내고, 상태가 바뀔 때마다 보낸다.
                     이벤트 이름은 status, data 는 GET /jobs/{jobId} 응답과 같은 JSON 이다. DONE 이나 FAILED 를 보내면 연결을 닫는다.
-                    그 전에 끊기면 다시 구독하면 된다. 연결은 3분이 지나면 닫힌다. 같은 작업을 다시 구독하면 이전 연결은 닫힌다.
+                    그 전에 끊기면 다시 구독하면 된다. 연결은 5분이 지나면 닫힌다. 같은 작업을 다시 구독하면 이전 연결은 닫힌다.
                     오류: JOB_NOT_FOUND(404), UNAUTHORIZED(401)""",
             responses = @ApiResponse(responseCode = "200", description = "상태 이벤트 스트림",
                     content = @Content(mediaType = MediaType.TEXT_EVENT_STREAM_VALUE,
