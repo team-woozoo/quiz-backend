@@ -10,6 +10,9 @@ import com.woozoo.quiz.quiz.port.GeneratedQuiz;
 import com.woozoo.quiz.quiz.port.QuizGenerationRequest;
 import com.woozoo.quiz.quiz.port.SourceChunk;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import java.util.Arrays;
 import java.util.List;
@@ -283,5 +286,31 @@ class GeneratedQuizValidatorTest {
         GeneratedQuiz result = validator.validate(request(QuizFormat.OX, 10), new GeneratedQuiz(null));
 
         assertThat(result.concepts()).isEmpty();
+    }
+
+    // 프롬프트를 고칠 때 볼 로그다. 이유는 처음 걸린 규칙 하나로 센다
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void 버린_문제는_이유별_개수를_로그로_남긴다(CapturedOutput output) {
+        GeneratedQuestion wrongQuote = question("인용 다름", "TCP는 연결을 맺는다.", 1, oxOptions());
+        GeneratedQuestion otherWrongQuote = question("인용 다름 2", "강의에 없는 문장", 1, oxOptions());
+        GeneratedQuestion noAnswer = question("정답 없음", TCP_QUOTE, 1,
+                List.of(new GeneratedOption("O", false), new GeneratedOption("X", false)));
+
+        validateOx(concept("TCP", List.of(1), validOx("정상"), wrongQuote, otherWrongQuote, noAnswer),
+                concept("모르는 청크", List.of(99), validOx("청크 없음")));
+
+        assertThat(output).contains("문제 4개를 버렸다")
+                .contains("NO_KNOWN_CHUNK=1")
+                .contains("ANSWER_COUNT=1")
+                .contains("QUOTE_NOT_IN_SOURCE=2");
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void 버린_문제가_없으면_로그를_남기지_않는다(CapturedOutput output) {
+        validateOx(concept("TCP", List.of(1), validOx("정상")));
+
+        assertThat(output).doesNotContain("버렸다");
     }
 }
