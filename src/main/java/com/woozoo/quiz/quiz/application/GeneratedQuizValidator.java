@@ -5,13 +5,16 @@ import com.woozoo.quiz.quiz.port.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -19,6 +22,7 @@ import java.util.stream.Stream;
 public class GeneratedQuizValidator {
 
     private static final int MAX_CONCEPT_NAME_LENGTH = 255;
+    private static final Pattern NOT_LETTER_OR_DIGIT = Pattern.compile("[^\\p{L}\\p{N}]");
 
     // 문제를 버린 이유. 프롬프트를 고칠 때 어느 규칙에서 많이 떨어지는지 보려고 센다
     enum Rejection {
@@ -87,7 +91,7 @@ public class GeneratedQuizValidator {
             validConcepts.add(new GeneratedConcept(
                     concept.name(), concept.description(), chunkSeqs, List.copyOf(validQuestions)));
         }
-        logRejected(rejected);
+        logResult(quiz, validConcepts, rejected);
         return new GeneratedQuiz(List.copyOf(validConcepts));
     }
 
@@ -97,13 +101,18 @@ public class GeneratedQuizValidator {
         }
     }
 
-    // 강의 내용은 남기지 않고 이유별 개수만 남긴다. 요청보다 많이 와서 남긴 문제는 버린 것으로 세지 않는다
-    private void logRejected(Map<Rejection, Integer> rejected) {
-        if (rejected.isEmpty()) {
-            return;
-        }
-        int total = rejected.values().stream().mapToInt(Integer::intValue).sum();
-        log.info("생성 결과 검증에서 문제 {}개를 버렸다: {}", total, rejected);
+    // 문제가 요청보다 적게 남았을 때, AI 가 적게 만든 것인지 검증에서 떨어진 것인지 가르려고 받은 수와 남긴 수를 같이 남긴다.
+    // 강의 내용은 남기지 않고 개수만 남긴다. 요청보다 많이 와서 남긴 문제는 버린 것으로 세지 않는다
+    private void logResult(GeneratedQuiz received, List<GeneratedConcept> validConcepts,
+                           Map<Rejection, Integer> rejected) {
+        int receivedCount = nullToEmpty(received.concepts()).stream()
+                .filter(Objects::nonNull)
+                .mapToInt(concept -> nullToEmpty(concept.questions()).size())
+                .sum();
+        int keptCount = validConcepts.stream().mapToInt(concept -> concept.questions().size()).sum();
+        int rejectedCount = rejected.values().stream().mapToInt(Integer::intValue).sum();
+        log.info("생성 결과 검증: 받은 문제 {}개, 남긴 문제 {}개, 버린 문제 {}개 {}",
+                receivedCount, keptCount, rejectedCount, rejected);
     }
 
     // 이름 빈 값은 mergeSameName 에서 이미 걸렀다. 이름은 VARCHAR(255) 라 넘으면 저장이 실패한다
@@ -207,12 +216,17 @@ public class GeneratedQuizValidator {
         return conceptChunkSeqs.contains(sourceChunkSeq);
     }
 
+    // 기호만 있는 인용은 정리하면 빈 문자열이 되고, 빈 문자열은 어느 원문에나 들어 있다고 나와 막는다
     private boolean isQuoteInSource(String sourceQuote, String sourceContent) {
-        return sourceContent.contains(normalize(sourceQuote));
+        String quote = normalize(sourceQuote);
+        return !quote.isEmpty() && sourceContent.contains(quote);
     }
 
-    // PDF 원문은 문장 중간에 줄바꿈이 있고 AI 는 그걸 공백으로 바꿔 인용하곤 해서, 양쪽 공백을 한 칸으로 맞춘 뒤 비교한다
+    // 원문과 인용을 글자와 숫자만 남겨 비교한다. 지어낸 문장은 글자가 원문에 이어져 있지 않아 그대로 걸러진다.
+    // PDF 추출은 단어 중간에 줄바꿈이나 공백을 넣고(W orkbook), AI 는 목록의 두 줄을 이으며 글머리 기호를 '-' 로 바꾸곤 한다.
+    // 공백과 기호까지 맞추면 원문에 있는 문장도 떨어져서, 모양이 같은 문자를 NFKC 로 맞춘 뒤 글자와 숫자가 아닌 것은 지운다
     private String normalize(String text) {
-        return text.replaceAll("\\s+", " ").strip();
+        String unified = Normalizer.normalize(text, Normalizer.Form.NFKC);
+        return NOT_LETTER_OR_DIGIT.matcher(unified).replaceAll("");
     }
 }
