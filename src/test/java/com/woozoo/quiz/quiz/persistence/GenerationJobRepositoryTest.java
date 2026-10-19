@@ -18,10 +18,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.Instant;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -49,6 +54,22 @@ class GenerationJobRepositoryTest {
     private long createJob() {
         return generationJobRepository.create(
                 new NewGenerationJob(userId, materialId, QuizKind.NORMAL, QuizFormat.OX, Difficulty.NORMAL));
+    }
+
+    // 사용자마다 진행 중인 작업은 하나뿐이라, 진행 중인 작업이 여럿 필요하면 사용자를 나눠 만든다
+    private long createJobOfNewUser(String email) {
+        long otherUserId = userRepository.save(new NewUser(email, "1234", "다른 사용자"));
+        long otherMaterialId = materialRepository.save(
+                new NewMaterial(otherUserId, "운영체제 3강", "os.pdf", FileType.PDF));
+        return generationJobRepository.create(
+                new NewGenerationJob(otherUserId, otherMaterialId, QuizKind.NORMAL, QuizFormat.OX, Difficulty.NORMAL));
+    }
+
+    private void moveCreatedAt(long jobId, Duration ago) {
+        jdbcClient.sql("UPDATE generation_job SET created_at = now() - :seconds * interval '1 second' WHERE id = :id")
+                .param("seconds", ago.toSeconds())
+                .param("id", jobId)
+                .update();
     }
 
     // 퀴즈 저장소가 아직 없어 markDone 의 quiz_id 외래 키를 맞추려고 직접 넣는다
@@ -124,7 +145,7 @@ class GenerationJobRepositoryTest {
     @Test
     void PENDING_이나_PROCESSING_작업은_실패로_바꾸고_에러_코드를_남긴다() {
         long pendingJobId = createJob();
-        long processingJobId = createJob();
+        long processingJobId = createJobOfNewUser("processing@test.com");
         generationJobRepository.markProcessing(processingJobId);
 
         assertThat(generationJobRepository.markFailed(pendingJobId, ErrorCode.INTERNAL_ERROR)).isTrue();
@@ -151,8 +172,8 @@ class GenerationJobRepositoryTest {
     @Test
     void 끝나지_않은_작업만_한꺼번에_실패로_바꾼다() {
         long pendingJobId = createJob();
-        long processingJobId = createJob();
-        long doneJobId = createJob();
+        long processingJobId = createJobOfNewUser("processing@test.com");
+        long doneJobId = createJobOfNewUser("done@test.com");
         generationJobRepository.markProcessing(processingJobId);
         generationJobRepository.markProcessing(doneJobId);
         generationJobRepository.markDone(doneJobId, insertQuiz());
@@ -172,5 +193,59 @@ class GenerationJobRepositoryTest {
 
         assertThat(generationJobRepository.markProcessing(jobId)).isFalse();
         assertThat(find(jobId).status()).isEqualTo(GenerationStatus.FAILED);
+    }
+
+    // 아래 두 테스트는 INSERT 가 실패하면 트랜잭션이 깨져 그 뒤로 쿼리를 더 보내지 않는다
+    @Test
+    void PENDING_작업이_있으면_같은_사용자는_작업을_더_만들_수_없다() {
+        createJob();
+
+        assertThatThrownBy(this::createJob).isInstanceOf(DuplicateKeyException.class);
+    }
+
+    @Test
+    void PROCESSING_작업이_있으면_같은_사용자는_작업을_더_만들_수_없다() {
+        generationJobRepository.markProcessing(createJob());
+
+        assertThatThrownBy(this::createJob).isInstanceOf(DuplicateKeyException.class);
+    }
+
+    @Test
+    void 앞_작업이_끝나면_같은_사용자가_다시_만들_수_있다() {
+        long failedJobId = createJob();
+        generationJobRepository.markFailed(failedJobId, ErrorCode.GENERATION_FAILED);
+
+        long doneJobId = createJob();
+        generationJobRepository.markProcessing(doneJobId);
+        generationJobRepository.markDone(doneJobId, insertQuiz());
+
+        long nextJobId = createJob();
+
+        assertThat(find(nextJobId).status()).isEqualTo(GenerationStatus.PENDING);
+    }
+
+    @Test
+    void 다른_사용자의_진행_중인_작업은_막지_않는다() {
+        long otherJobId = createJobOfNewUser("other@test.com");
+        long jobId = createJob();
+
+        assertThat(find(otherJobId).status()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(find(jobId).status()).isEqualTo(GenerationStatus.PENDING);
+    }
+
+    @Test
+    void 기준_시각_이후에_만든_내_작업만_센다() {
+        long oldJobId = createJob();
+        generationJobRepository.markFailed(oldJobId, ErrorCode.GENERATION_FAILED);
+        moveCreatedAt(oldJobId, Duration.ofDays(2));
+        long recentJobId = createJob();
+        generationJobRepository.markFailed(recentJobId, ErrorCode.GENERATION_FAILED);
+        createJob();
+        createJobOfNewUser("other@test.com");
+
+        long count = generationJobRepository.countByUserIdSince(userId, Instant.now().minus(Duration.ofDays(1)));
+
+        // 이틀 전 작업과 남의 작업은 빼고, 실패한 작업과 진행 중인 작업은 센다
+        assertThat(count).isEqualTo(2);
     }
 }

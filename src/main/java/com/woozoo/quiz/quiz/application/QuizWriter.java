@@ -4,6 +4,7 @@ import com.woozoo.quiz.concept.persistence.MaterialConceptRepository;
 import com.woozoo.quiz.quiz.domain.GenerationJob;
 import com.woozoo.quiz.quiz.domain.NewQuestion;
 import com.woozoo.quiz.quiz.domain.NewQuiz;
+import com.woozoo.quiz.quiz.domain.QuizFormat;
 import com.woozoo.quiz.quiz.persistence.GenerationJobRepository;
 import com.woozoo.quiz.quiz.persistence.QuizRepository;
 import com.woozoo.quiz.quiz.port.GeneratedConcept;
@@ -22,13 +23,15 @@ public class QuizWriter {
     private final QuizRepository quizRepository;
     private final MaterialConceptRepository materialConceptRepository;
     private final GenerationJobRepository generationJobRepository;
+    private final OptionShuffler optionShuffler;
 
     public QuizWriter(QuizRepository quizRepository,
                       MaterialConceptRepository materialConceptRepository,
-                      GenerationJobRepository generationJobRepository) {
+                      GenerationJobRepository generationJobRepository, OptionShuffler optionShuffler) {
         this.quizRepository = quizRepository;
         this.materialConceptRepository = materialConceptRepository;
         this.generationJobRepository = generationJobRepository;
+        this.optionShuffler = optionShuffler;
     }
 
     // GeneratedQuizValidator 를 통과한 결과만 받는다. 검증 전 결과가 오면 INSERT 가 실패할 수 있다.
@@ -57,7 +60,7 @@ public class QuizWriter {
                         question.cognitiveType(),
                         question.content(),
                         question.explanation()));
-                saveOptions(questionId, question.options());
+                saveOptions(questionId, question.options(), job.format());
             }
         }
 
@@ -68,9 +71,12 @@ public class QuizWriter {
         return quizId;
     }
 
-    private void saveOptions(long questionId, List<GeneratedOption> options) {
-        for (int i = 0; i < options.size(); i++) {
-            GeneratedOption option = options.get(i);
+    private void saveOptions(long questionId, List<GeneratedOption> options, QuizFormat format) {
+        // AI 는 정답을 첫 보기로 쓰는 습관이 있어, 저장 전에 객관식 보기 순서를 섞는다
+        List<GeneratedOption> shuffledOptions = optionShuffler.shuffle(options, format);
+
+        for (int i = 0; i < shuffledOptions.size(); i++) {
+            GeneratedOption option = shuffledOptions.get(i);
             quizRepository.saveOption(questionId, i + 1, option.content(), option.isCorrect());
         }
     }

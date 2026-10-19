@@ -13,11 +13,13 @@ import com.woozoo.quiz.material.persistence.MaterialRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,14 +46,19 @@ class QuizGenerationControllerTest {
     UserRepository userRepository;
     @Autowired
     MaterialRepository materialRepository;
+    @Autowired
+    JdbcClient jdbcClient;
+    @Value("${quiz.generation.daily-limit}")
+    int dailyLimit;
 
+    long ownerId;
     String ownerToken;
     String otherToken;
     long materialId;
 
     @BeforeEach
     void setup() {
-        long ownerId = userRepository.save(new NewUser("owner@test.com", "1234", "주인"));
+        ownerId = userRepository.save(new NewUser("owner@test.com", "1234", "주인"));
         long otherId = userRepository.save(new NewUser("other@test.com", "1234", "남"));
         ownerToken = jwtProvider.createAccessToken(ownerId);
         otherToken = jwtProvider.createAccessToken(otherId);
@@ -67,6 +74,19 @@ class QuizGenerationControllerTest {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body));
+    }
+
+    private void insertJobs(int count, String status) {
+        for (int i = 0; i < count; i++) {
+            jdbcClient.sql("""
+                            INSERT INTO generation_job (user_id, material_id, kind, format, difficulty, status)
+                            VALUES (:userId, :materialId, 'NORMAL', 'OX', 'NORMAL', :status)
+                            """)
+                    .param("userId", ownerId)
+                    .param("materialId", materialId)
+                    .param("status", status)
+                    .update();
+        }
     }
 
     private ResultActions getJob(String token, long jobId) throws Exception {
@@ -138,5 +158,27 @@ class QuizGenerationControllerTest {
                                 """))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void 오늘_한도만큼_만들었으면_429_DAILY_GENERATION_LIMIT_EXCEEDED_다() throws Exception {
+        insertJobs(dailyLimit, "DONE");
+
+        requestGeneration(ownerToken, materialId, """
+                {"format": "OX", "difficulty": "NORMAL"}
+                """)
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("DAILY_GENERATION_LIMIT_EXCEEDED"));
+    }
+
+    @Test
+    void 진행_중인_작업이_있으면_409_GENERATION_IN_PROGRESS_다() throws Exception {
+        insertJobs(1, "PENDING");
+
+        requestGeneration(ownerToken, materialId, """
+                {"format": "OX", "difficulty": "NORMAL"}
+                """)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("GENERATION_IN_PROGRESS"));
     }
 }

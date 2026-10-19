@@ -1,6 +1,9 @@
 services:
   postgres:
     image: 'pgvector/pgvector:pg18'
+    # Spring 은 이미지 이름으로 Postgres 를 알아보는데 pgvector 이미지는 모른다. 라벨로 알려 줘야 접속 정보가 들어온다
+    labels:
+      org.springframework.boot.service-connection: postgres
     environment:
       - 'POSTGRES_DB=quiz'
       - 'POSTGRES_USER=quiz'

@@ -4,12 +4,15 @@ import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
 import com.woozoo.quiz.quiz.port.*;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.*;
 
+// 로컬과 테스트의 기본 생성기다. AI 를 부르지 않아 비용이 들지 않는다
 @Component
+@ConditionalOnProperty(name = "quiz.generation.generator", havingValue = "fake")
 public class FakeQuizGenerationAdapter implements QuizGenerationPort {
 
     private static final int MAX_QUOTE_LENGTH = 100;

@@ -39,7 +39,9 @@ public class QuizGenerationController {
             description = """
                     내 자료로 퀴즈 생성을 요청한다. 생성은 백그라운드에서 수십 초 걸려 202 와 jobId 를 바로 준다.
                     진행 상황은 GET /jobs/{jobId}/events 로 받고, DONE 이 되면 quizId 로 퀴즈를 조회한다.
-                    오류: INVALID_INPUT(400), MATERIAL_NOT_FOUND(404, 없거나 내 것이 아닌 자료), UNAUTHORIZED(401)""")
+                    생성 요청은 사용자마다 하루(한국 시간 자정 기준) 정해진 횟수까지이고, 진행 중인 작업이 있으면 끝난 뒤에 다시 요청한다.
+                    오류: INVALID_INPUT(400), MATERIAL_NOT_FOUND(404, 없거나 내 것이 아닌 자료),
+                    GENERATION_IN_PROGRESS(409, 진행 중인 작업이 있음), DAILY_GENERATION_LIMIT_EXCEEDED(429, 오늘 횟수를 다 씀), UNAUTHORIZED(401)""")
     @PostMapping("/materials/{materialId}/quizzes")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public GenerateQuizResponse generate(@AuthenticationPrincipal Long userId,
@@ -66,7 +68,7 @@ public class QuizGenerationController {
             description = """
                     text/event-stream 으로 연결을 열어 둔다. 연결 즉시 현재 상태를 한 번 보내고, 상태가 바뀔 때마다 보낸다.
                     이벤트 이름은 status, data 는 GET /jobs/{jobId} 응답과 같은 JSON 이다. DONE 이나 FAILED 를 보내면 연결을 닫는다.
-                    그 전에 끊기면 다시 구독하면 된다. 연결은 3분이 지나면 닫힌다. 같은 작업을 다시 구독하면 이전 연결은 닫힌다.
+                    그 전에 끊기면 다시 구독하면 된다. 연결은 5분이 지나면 닫힌다. 같은 작업을 다시 구독하면 이전 연결은 닫힌다.
                     오류: JOB_NOT_FOUND(404), UNAUTHORIZED(401)""",
             responses = @ApiResponse(responseCode = "200", description = "상태 이벤트 스트림",
                     content = @Content(mediaType = MediaType.TEXT_EVENT_STREAM_VALUE,

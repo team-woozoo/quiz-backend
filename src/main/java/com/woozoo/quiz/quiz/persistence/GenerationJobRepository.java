@@ -7,6 +7,8 @@ import com.woozoo.quiz.quiz.domain.NewGenerationJob;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
 // 상태를 바꾸는 메서드는 이전 상태를 WHERE 에 넣는다. 같은 작업에 두 번 와도 DB 가 하나만 통과시킨다
@@ -95,5 +97,18 @@ public class GenerationJobRepository {
                 .param("jobId", jobId)
                 .query(GenerationJob.class)
                 .optional();
+    }
+
+    public long countByUserIdSince(long userId, Instant since) {
+        return jdbcClient.sql("""
+                SELECT COUNT(*)
+                FROM generation_job
+                WHERE user_id = :userId AND created_at >= :since
+                """)
+                .param("userId", userId)
+                // Postgres 드라이버가 Instant 의 SQL 타입을 추론하지 못해 OffsetDateTime 으로 바꿔 넘긴다
+                .param("since", since.atOffset(ZoneOffset.UTC))
+                .query(Long.class)
+                .single();
     }
 }
