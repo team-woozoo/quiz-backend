@@ -46,8 +46,10 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
                 case OX -> oxQuestion(chunk, quotes.get(chunk.seq()));
                 case MULTIPLE_CHOICE -> multipleChoiceQuestion(chunk, quotes);
             };
+            // 약점 퀴즈면 실제 생성기처럼 겨냥한 개념 이름으로 낸다. 같은 이름은 검증기가 하나로 합친다
+            String conceptName = request.focus() == null ? chunk.seq() + "번 청크 내용" : request.focus().name();
             concepts.add(new GeneratedConcept(
-                    chunk.seq() + "번 청크 내용",
+                    conceptName,
                     quotes.get(chunk.seq()),
                     List.of(chunk.seq()),
                     List.of(question)));

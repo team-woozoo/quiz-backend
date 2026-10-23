@@ -9,5 +9,6 @@ public record GenerationJob(
         Difficulty difficulty,
         GenerationStatus status,
         Long quizId,
-        String errorCode) {
+        String errorCode,
+        Long userConceptId) {
 }

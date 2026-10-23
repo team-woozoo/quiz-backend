@@ -51,24 +51,55 @@ public class QuizWriter {
             }
 
             for (GeneratedQuestion question : concept.questions()) {
-                long questionId = quizRepository.saveQuestion(new NewQuestion(
-                        quizId,
-                        questionOrderNo++,
-                        conceptId,
-                        chunkIdBySeq.get(question.sourceChunkSeq()),
-                        question.sourceQuote(),
-                        question.cognitiveType(),
-                        question.content(),
-                        question.explanation()));
-                saveOptions(questionId, question.options(), job.format());
+                saveQuestion(quizId, questionOrderNo++, conceptId, chunkIdBySeq, question, job.format());
             }
         }
 
-        // 생성 중에 서버가 재시작돼 실패로 정리된 작업이면 여기서 막혀, 롤백으로 주인 없는 퀴즈를 남기지 않는다
+        markDone(job, quizId);
+        return quizId;
+    }
+
+    // 약점 퀴즈는 자료 없이 저장하고 겨냥한 대표 개념을 남긴다. 검증기가 겨냥한 개념의 문제만 남겨서,
+    // 개념을 새로 만들지 않고 문제마다 근거 페이지를 가진 원래 자료 개념에 붙인다
+    @Transactional
+    public long saveWeakness(GenerationJob job, GeneratedQuiz validated, Map<Integer, Long> chunkIdBySeq,
+                             Map<Long, Long> materialConceptIdByChunkId) {
+        long quizId = quizRepository.save(
+                new NewQuiz(job.userId(), null, job.kind(), job.format(), job.difficulty()));
+        quizRepository.saveWeaknessTarget(quizId, job.userConceptId());
+
+        int questionOrderNo = 1;
+        for (GeneratedConcept concept : validated.concepts()) {
+            for (GeneratedQuestion question : concept.questions()) {
+                long chunkId = chunkIdBySeq.get(question.sourceChunkSeq());
+                saveQuestion(quizId, questionOrderNo++, materialConceptIdByChunkId.get(chunkId),
+                        chunkIdBySeq, question, job.format());
+            }
+        }
+
+        markDone(job, quizId);
+        return quizId;
+    }
+
+    private void saveQuestion(long quizId, int orderNo, long conceptId, Map<Integer, Long> chunkIdBySeq,
+                              GeneratedQuestion question, QuizFormat format) {
+        long questionId = quizRepository.saveQuestion(new NewQuestion(
+                quizId,
+                orderNo,
+                conceptId,
+                chunkIdBySeq.get(question.sourceChunkSeq()),
+                question.sourceQuote(),
+                question.cognitiveType(),
+                question.content(),
+                question.explanation()));
+        saveOptions(questionId, question.options(), format);
+    }
+
+    // 생성 중에 서버가 재시작돼 실패로 정리된 작업이면 여기서 막혀, 롤백으로 주인 없는 퀴즈를 남기지 않는다
+    private void markDone(GenerationJob job, long quizId) {
         if (!generationJobRepository.markDone(job.id(), quizId)) {
             throw new IllegalStateException("PROCESSING 이 아닌 작업은 완료할 수 없다: jobId=" + job.id());
         }
-        return quizId;
     }
 
     private void saveOptions(long questionId, List<GeneratedOption> options, QuizFormat format) {

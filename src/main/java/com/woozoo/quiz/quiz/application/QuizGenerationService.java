@@ -1,5 +1,6 @@
 package com.woozoo.quiz.quiz.application;
 
+import com.woozoo.quiz.concept.application.ConceptMappingService;
 import com.woozoo.quiz.global.error.BusinessException;
 import com.woozoo.quiz.global.error.ErrorCode;
 import com.woozoo.quiz.material.persistence.MaterialRepository;
@@ -23,38 +24,53 @@ public class QuizGenerationService {
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     private final MaterialRepository materialRepository;
+    private final ConceptMappingService conceptMappingService;
     private final GenerationJobRepository generationJobRepository;
     private final QuizGenerationWorker quizGenerationWorker;
     private final Clock clock;
     private final long dailyLimit;
 
     public QuizGenerationService(MaterialRepository materialRepository,
+                                 ConceptMappingService conceptMappingService,
                                  GenerationJobRepository generationJobRepository,
                                  QuizGenerationWorker quizGenerationWorker,
                                  Clock clock,
                                  @Value("${quiz.generation.daily-limit}") long dailyLimit) {
         this.materialRepository = materialRepository;
+        this.conceptMappingService = conceptMappingService;
         this.generationJobRepository = generationJobRepository;
         this.quizGenerationWorker = quizGenerationWorker;
         this.clock = clock;
         this.dailyLimit = dailyLimit;
     }
 
-    // 세고 넣는 사이에 트랜잭션을 두지 않는다.
-    // 같은 사용자의 동시 요청은 진행 중 작업 인덱스(V2)가 하나만 통과시켜서, 한도를 넘지 않는다.
-    // 트랜잭션 안에서 작업을 넘기면 커밋 전에 백그라운드가 먼저 돌아 작업 행을 못 찾을 수 있다
     public long requestGeneration(GenerateQuizCommand command) {
         // 남의 자료도 없는 자료와 같은 응답을 줘서, 다른 사용자의 자료 id 가 있는지 알 수 없게 한다
         if (!materialRepository.existsByIdAndOwnerId(command.materialId(), command.userId())) {
             throw new BusinessException(ErrorCode.MATERIAL_NOT_FOUND);
         }
-        if (!hasRemainingDailyQuota(command.userId())) {
+        return startJob(new NewGenerationJob(
+                command.userId(), command.materialId(), QuizKind.NORMAL, command.format(), command.difficulty()));
+    }
+
+    // 개념을 대표 개념에 이은 뒤 일반 생성과 같은 한도와 진행 중 제한을 거쳐 작업을 만든다.
+    // 잇기는 따로 커밋된다. 그 뒤 한도에 걸려도 대표 개념은 남지만, 다음 요청이 그대로 다시 쓴다
+    public long requestWeaknessGeneration(GenerateWeaknessQuizCommand command) {
+        long userConceptId = conceptMappingService.mapToUserConcept(command.materialConceptId(), command.userId());
+        return startJob(new NewGenerationJob(
+                command.userId(), null, QuizKind.WEAKNESS, command.format(), command.difficulty(), userConceptId));
+    }
+
+    // 세고 넣는 사이에 트랜잭션을 두지 않는다.
+    // 같은 사용자의 동시 요청은 진행 중 작업 인덱스(V2)가 하나만 통과시켜서, 한도를 넘지 않는다.
+    // 트랜잭션 안에서 작업을 넘기면 커밋 전에 백그라운드가 먼저 돌아 작업 행을 못 찾을 수 있다
+    private long startJob(NewGenerationJob newGenerationJob) {
+        if (!hasRemainingDailyQuota(newGenerationJob.userId())) {
             throw new BusinessException(ErrorCode.DAILY_GENERATION_LIMIT_EXCEEDED);
         }
         long jobId;
         try {
-            jobId = generationJobRepository.create(new NewGenerationJob(
-                    command.userId(), command.materialId(), QuizKind.NORMAL, command.format(), command.difficulty()));
+            jobId = generationJobRepository.create(newGenerationJob);
         } catch (DuplicateKeyException e) {
             // generation_job 의 유니크 제약은 진행 중 작업 인덱스(V2) 하나뿐이라, 중복이면 진행 중인 작업이 있다는 뜻이다
             throw new BusinessException(ErrorCode.GENERATION_IN_PROGRESS, e);

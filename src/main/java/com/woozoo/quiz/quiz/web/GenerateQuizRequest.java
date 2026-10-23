@@ -1,6 +1,7 @@
 package com.woozoo.quiz.quiz.web;
 
 import com.woozoo.quiz.quiz.application.GenerateQuizCommand;
+import com.woozoo.quiz.quiz.application.GenerateWeaknessQuizCommand;
 import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
 import jakarta.validation.constraints.NotNull;
@@ -15,5 +16,9 @@ public record GenerateQuizRequest(
 
     public GenerateQuizCommand toCommand(long userId, long materialId) {
         return new GenerateQuizCommand(userId, materialId, format, difficulty);
+    }
+
+    public GenerateWeaknessQuizCommand toWeaknessCommand(long userId, long conceptId) {
+        return new GenerateWeaknessQuizCommand(userId, conceptId, format, difficulty);
     }
 }

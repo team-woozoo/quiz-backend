@@ -23,8 +23,8 @@ public class GenerationJobRepository {
 
     public long create(NewGenerationJob newGenerationJob) {
         return jdbcClient.sql("""
-                INSERT INTO generation_job (user_id, material_id, kind, format, difficulty, status)
-                VALUES (:userId, :materialId, :kind, :format, :difficulty, :status)
+                INSERT INTO generation_job (user_id, material_id, kind, format, difficulty, status, user_concept_id)
+                VALUES (:userId, :materialId, :kind, :format, :difficulty, :status, :userConceptId)
                 RETURNING id
                 """)
                 .param("userId", newGenerationJob.userId())
@@ -33,6 +33,7 @@ public class GenerationJobRepository {
                 .param("format", newGenerationJob.format().name())
                 .param("difficulty", newGenerationJob.difficulty().name())
                 .param("status", GenerationStatus.PENDING.name())
+                .param("userConceptId", newGenerationJob.userConceptId())
                 .query(Long.class)
                 .single();
     }
@@ -90,7 +91,7 @@ public class GenerationJobRepository {
 
     public Optional<GenerationJob> findById(long jobId) {
         return jdbcClient.sql("""
-                SELECT id, user_id, material_id, kind, format, difficulty, status, quiz_id, error_code
+                SELECT id, user_id, material_id, kind, format, difficulty, status, quiz_id, error_code, user_concept_id
                 FROM generation_job
                 WHERE id = :jobId
                 """)

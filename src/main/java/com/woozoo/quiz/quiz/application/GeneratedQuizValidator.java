@@ -28,12 +28,12 @@ public class GeneratedQuizValidator {
     private static final int MAX_CONCEPT_NAME_LENGTH = 255;
     // 인용의 떨어진 조각을 잇는 표시다. 원문의 URL 이나 경로의 / 와 헷갈리지 않게 앞뒤 공백까지 본다
     private static final Pattern QUOTE_PART_SEPARATOR = Pattern.compile("\\s+/\\s+");
-    private static final int MAX_QUOTE_PARTS = 3;
     private static final Pattern NOT_LETTER_OR_DIGIT = Pattern.compile("[^\\p{L}\\p{N}]");
 
     // 문제를 버린 이유. 프롬프트를 고칠 때 어느 규칙에서 많이 떨어지는지 보려고 센다
     enum Rejection {
         INVALID_CONCEPT,
+        OUTSIDE_FOCUS,
         NO_KNOWN_CHUNK,
         NULL_QUESTION,
         OPTION_COUNT,
@@ -41,7 +41,6 @@ public class GeneratedQuizValidator {
         ANSWER_COUNT,
         DUPLICATE_OPTION,
         SOURCE_NOT_IN_CONCEPT,
-        TOO_MANY_QUOTE_PARTS,
         QUOTE_NOT_IN_SOURCE
     }
 
@@ -64,6 +63,11 @@ public class GeneratedQuizValidator {
         for (GeneratedConcept concept : concepts) {
             if (!isValidConcept(concept)) {
                 count(rejected, Rejection.INVALID_CONCEPT, concept.questions().size());
+                countTypes(rejectedTypes, concept.questions());
+                continue;
+            }
+            if (!isInFocus(concept, request.focus())) {
+                count(rejected, Rejection.OUTSIDE_FOCUS, concept.questions().size());
                 countTypes(rejectedTypes, concept.questions());
                 continue;
             }
@@ -176,6 +180,12 @@ public class GeneratedQuizValidator {
                 receivedCount, keptCount, rejectedCount, rejected, rejectedTypes, trimmedCount, trimmedTypes);
     }
 
+    // 약점 퀴즈는 보낸 페이지에 다른 개념도 함께 있어, 겨냥한 개념의 문제만 남긴다.
+    // 생성기가 띄어쓰기나 기호를 바꿔 쓸 수 있어 인용과 같이 글자와 숫자만 비교한다
+    private boolean isInFocus(GeneratedConcept concept, ConceptFocus focus) {
+        return focus == null || normalize(concept.name()).equalsIgnoreCase(normalize(focus.name()));
+    }
+
     // 이름 빈 값은 mergeSameName 에서 이미 걸렀다. 이름은 VARCHAR(255) 라 넘으면 저장이 실패한다
     private boolean isValidConcept(GeneratedConcept concept) {
         return concept.name().length() <= MAX_CONCEPT_NAME_LENGTH
@@ -203,9 +213,6 @@ public class GeneratedQuizValidator {
         }
         if (!isSourceInConcept(question.sourceChunkSeq(), chunkSeqs)) {
             return Optional.of(Rejection.SOURCE_NOT_IN_CONCEPT);
-        }
-        if (!hasAllowedQuoteParts(question.sourceQuote())) {
-            return Optional.of(Rejection.TOO_MANY_QUOTE_PARTS);
         }
         if (!isQuoteInSource(question.sourceQuote(), normalizedContentBySeq.get(question.sourceChunkSeq()))) {
             return Optional.of(Rejection.QUOTE_NOT_IN_SOURCE);
@@ -280,28 +287,22 @@ public class GeneratedQuizValidator {
         return conceptChunkSeqs.contains(sourceChunkSeq);
     }
 
-    // 비교나 분석 문제는 같은 페이지의 떨어진 두 곳이 근거라, 인용을 " / " 로 나눈 조각마다 원문에 있는지 본다.
-    // 조각이 많으면 페이지 여기저기를 잘라 붙인 근거가 되어 조각 수를 제한한다
-    private boolean hasAllowedQuoteParts(String sourceQuote) {
-        return quoteParts(sourceQuote).size() <= MAX_QUOTE_PARTS;
-    }
-
-    private boolean isQuoteInSource(String sourceQuote, String sourceContent) {
-        return quoteParts(sourceQuote).stream()
-                .allMatch(part -> isPartInSource(part, sourceContent));
-    }
-
-    // 모델은 원문 중간을 건너뛸 때 " / " 대신 빈 줄이나 "..." 줄을 넣거나, 표시 없이 줄만 바꾸곤 한다.
-    // 그래서 조각을 줄로 나눠, 줄마다 원문에 그대로 있고 앞 줄보다 뒤에 나오는지 본다.
+    // 모델은 원문 중간을 건너뛸 때 " / " 로 잇거나, 빈 줄이나 "..." 줄을 넣거나, 표시 없이 줄만 바꾼다.
+    // 그래서 인용을 " / " 와 줄로 나눠, 줄마다 원문에 그대로 있고 앞 줄보다 뒤에 나오는지 본다.
+    // " / " 로 이은 조각 수는 제한하지 않는다. 줄 사이를 건너뛰는 것을 받는 이상, 같은 건너뛰기를 " / " 로 표시했다고 버릴 까닭이 없다.
     // 줄은 정리하기 전에 나눈다. 먼저 정리하면 건너뛴 자리의 앞뒤가 붙어 원문에서 찾을 수 없다.
-    // 빈 줄, "...", "}" 처럼 정리하면 비는 줄은 건너뛴 자리로 보고 뺀다. 줄이 하나도 안 남으면 기호만 있는 조각이라 버린다
-    private boolean isPartInSource(String part, String sourceContent) {
-        List<String> lines = part.lines()
-                .map(this::normalize)
-                .filter(line -> !line.isEmpty())
-                .toList();
-        if (lines.isEmpty()) {
-            return false;
+    // 빈 줄, "...", "}" 처럼 정리하면 비는 줄은 건너뛴 자리로 보고 뺀다. " / " 조각에 남는 줄이 없으면 기호만 있는 조각이라 버린다
+    private boolean isQuoteInSource(String sourceQuote, String sourceContent) {
+        List<String> lines = new ArrayList<>();
+        for (String part : QUOTE_PART_SEPARATOR.split(sourceQuote)) {
+            List<String> partLines = part.lines()
+                    .map(this::normalize)
+                    .filter(line -> !line.isEmpty())
+                    .toList();
+            if (partLines.isEmpty()) {
+                return false;
+            }
+            lines.addAll(partLines);
         }
         int from = 0;
         for (String line : lines) {
@@ -312,10 +313,6 @@ public class GeneratedQuizValidator {
             from = found + line.length();
         }
         return true;
-    }
-
-    private List<String> quoteParts(String sourceQuote) {
-        return List.of(QUOTE_PART_SEPARATOR.split(sourceQuote));
     }
 
     // 원문과 인용을 글자와 숫자만 남겨 비교한다. 지어낸 문장은 글자가 원문에 이어져 있지 않아 그대로 걸러진다.

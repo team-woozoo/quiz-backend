@@ -53,7 +53,7 @@ class JobEventListenerTest {
         registry.connect(1L);
         given(quizGenerationService.findJob(1L)).willReturn(Optional.of(new GenerationJob(
                 1L, 10L, 20L, QuizKind.NORMAL, QuizFormat.OX, Difficulty.NORMAL,
-                GenerationStatus.PROCESSING, null, null)));
+                GenerationStatus.PROCESSING, null, null, null)));
 
         assertThatNoException().isThrownBy(() -> listener.sendJobStatus(new JobStatusChanged(1L)));
         verify(quizGenerationService).findJob(1L);

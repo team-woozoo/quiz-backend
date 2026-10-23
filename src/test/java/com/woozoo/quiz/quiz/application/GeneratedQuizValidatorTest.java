@@ -3,6 +3,7 @@ package com.woozoo.quiz.quiz.application;
 import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
+import com.woozoo.quiz.quiz.port.ConceptFocus;
 import com.woozoo.quiz.quiz.port.GeneratedConcept;
 import com.woozoo.quiz.quiz.port.GeneratedOption;
 import com.woozoo.quiz.quiz.port.GeneratedQuestion;
@@ -344,6 +345,23 @@ class GeneratedQuizValidatorTest {
         assertThat(result.concepts()).isEmpty();
     }
 
+    // 약점 퀴즈는 보낸 페이지에 다른 개념도 있어, 겨냥한 개념의 문제만 남긴다. 띄어쓰기와 기호, 대소문자는 가리지 않는다
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void 겨냥한_개념이_있으면_그_개념의_문제만_남긴다(CapturedOutput output) {
+        QuizGenerationRequest focused = new QuizGenerationRequest(CHUNKS, QuizFormat.OX, Difficulty.NORMAL, 10,
+                Map.of(), List.of(), new ConceptFocus("TCP 연결", "설명", List.of()));
+        GeneratedQuiz generated = new GeneratedQuiz(List.of(
+                concept("TCP 연결", List.of(1), validOx("이름 그대로")),
+                concept("tcp-연결!", List.of(1), validOx("기호만 다름")),
+                concept("UDP", List.of(2), question("다른 개념", UDP_QUOTE, 2, oxOptions()))));
+
+        GeneratedQuiz result = validator.validate(focused, generated);
+
+        assertThat(contentsOf(result)).containsExactly("이름 그대로", "기호만 다름");
+        assertThat(output).contains("OUTSIDE_FOCUS=1");
+    }
+
     // 프롬프트를 고칠 때 볼 로그다. 이유는 처음 걸린 규칙 하나로 센다
     @Test
     @ExtendWith(OutputCaptureExtension.class)
@@ -445,10 +463,23 @@ class GeneratedQuizValidatorTest {
         assertThat(validateSlideQuotes("통합문서(Workbook) / 엑셀에서 데이터를 저장하는 가장 작은 단위")).isEmpty();
     }
 
-    // 페이지 여기저기를 잘라 붙인 근거를 막는다
+    // 줄 사이를 건너뛰는 것과 같은 규칙이라 " / " 조각 수는 제한하지 않는다
     @Test
-    void 슬래시로_이은_조각이_세_개를_넘으면_버린다() {
-        assertThat(validateSlideQuotes("통합문서 / 엑셀 문서 / 셀(Cell) / 최소 저장 단위")).isEmpty();
+    void 슬래시로_이은_조각이_많아도_원문_순서대로_있으면_통과한다() {
+        String quote = "통합문서 / 엑셀 문서 / 셀(Cell) / 최소 저장 단위";
+
+        assertThat(validateSlideQuotes(quote)).containsExactly(quote);
+    }
+
+    // 원문에 있는 조각들이라도 순서를 바꿔 이으면 원문과 다른 근거가 된다
+    @Test
+    void 슬래시로_이은_조각의_순서가_원문과_다르면_버린다() {
+        assertThat(validateSlideQuotes("• 셀(Cell) / • 통합문서(W orkbook)")).isEmpty();
+    }
+
+    @Test
+    void 슬래시로_이은_조각_하나가_기호뿐이면_버린다() {
+        assertThat(validateSlideQuotes("• 셀(Cell) / ...")).isEmpty();
     }
 
     // 모델은 " / " 대신 원문의 덩어리 사이에 있던 빈 줄을 남기고 그 사이 줄들을 건너뛰곤 한다

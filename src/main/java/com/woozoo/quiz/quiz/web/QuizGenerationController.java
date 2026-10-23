@@ -51,6 +51,23 @@ public class QuizGenerationController {
         return new GenerateQuizResponse(jobId);
     }
 
+    @Operation(operationId = "requestWeaknessQuizGeneration", summary = "약한 개념으로 퀴즈 생성 요청",
+            description = """
+                    개념 하나가 나온 페이지만으로 약점 퀴즈를 만든다. conceptId 는 약한 개념이나 자료의 개념 목록이 주는 id 다.
+                    요청 본문, 응답, 이후 진행 상황과 퀴즈 조회는 자료로 만들 때와 같고, 문제 수만 5개다.
+                    그 개념으로 최근에 낸 문제와 겹치지 않게 만들고, 만든 문제의 결과는 그 개념의 정답률에 들어간다.
+                    하루 생성 횟수와 진행 중 작업 제한은 자료로 만들 때와 함께 센다. 만든 퀴즈는 자료가 없어 materialId 가 null 이다.
+                    오류: INVALID_INPUT(400), CONCEPT_NOT_FOUND(404, 없거나 내 것이 아닌 개념),
+                    GENERATION_IN_PROGRESS(409), DAILY_GENERATION_LIMIT_EXCEEDED(429), UNAUTHORIZED(401)""")
+    @PostMapping("/concepts/{conceptId}/quizzes")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public GenerateQuizResponse generateWeakness(@AuthenticationPrincipal Long userId,
+                                                 @PathVariable long conceptId,
+                                                 @Valid @RequestBody GenerateQuizRequest request) {
+        long jobId = quizGenerationService.requestWeaknessGeneration(request.toWeaknessCommand(userId, conceptId));
+        return new GenerateQuizResponse(jobId);
+    }
+
     @Operation(operationId = "getGenerationJob", summary = "생성 작업 상태 조회",
             description = """
                     작업 상태를 한 번 준다. 상태는 PENDING → PROCESSING → DONE 또는 FAILED 로 바뀐다.

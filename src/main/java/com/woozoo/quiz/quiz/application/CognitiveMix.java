@@ -37,4 +37,23 @@ final class CognitiveMix {
         }
         return Collections.unmodifiableMap(counts);
     }
+
+    // 문제 수를 줄일 때 높은 유형부터 하나씩 뺀다. 재료가 적을수록 높은 유형의 근거가 먼저 모자라기 때문이다
+    static Map<CognitiveType, Integer> limitTo(Map<CognitiveType, Integer> counts, int questionCount) {
+        Map<CognitiveType, Integer> limited = new EnumMap<>(CognitiveType.class);
+        limited.putAll(counts);
+        int excess = limited.values().stream().mapToInt(Integer::intValue).sum() - questionCount;
+        CognitiveType[] types = CognitiveType.values();
+        for (int i = types.length - 1; i >= 0 && excess > 0; i--) {
+            int count = limited.getOrDefault(types[i], 0);
+            int removed = Math.min(count, excess);
+            if (count - removed == 0) {
+                limited.remove(types[i]);
+            } else {
+                limited.put(types[i], count - removed);
+            }
+            excess -= removed;
+        }
+        return Collections.unmodifiableMap(limited);
+    }
 }
