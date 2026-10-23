@@ -12,23 +12,12 @@ public class LearningProfileRepository {
 
     private final JdbcClient jdbcClient;
 
-    // 문제마다 내가 낸 가장 최근 답 하나. 같은 문제를 여러 번 풀어도 한 번만 세고, 지금 실력을 따라가게 한다
-    private static final String LATEST_ANSWERS = """
-        WITH latest AS (
-            SELECT DISTINCT ON (sa.question_id) sa.question_id, sa.is_correct
-            FROM submission s
-            JOIN submission_answer sa ON sa.submission_id = s.id
-            WHERE s.user_id = :userId
-            ORDER BY sa.question_id, s.submitted_at DESC, s.id DESC
-        )
-        """;
-
     public LearningProfileRepository(JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
     }
 
     public List<CognitiveTypeStat> countByCognitiveType(long userId) {
-        return jdbcClient.sql(LATEST_ANSWERS + """
+        return jdbcClient.sql(LatestAnswers.WITH_LATEST + """
                 SELECT q.cognitive_type, COUNT(*) AS answered_count,
                 COUNT(*) FILTER (WHERE l.is_correct) AS correct_answer_count
                 FROM latest l
@@ -41,7 +30,7 @@ public class LearningProfileRepository {
     }
 
     public List<ConceptStat> findWeakConcepts(long userId, int minAnswered, int limit) {
-        return jdbcClient.sql(LATEST_ANSWERS + """
+        return jdbcClient.sql(LatestAnswers.WITH_LATEST + """
                 SELECT mc.id AS concept_id, mc.name AS concept_name, m.id AS material_id, m.title AS material_title,
                 COUNT(*) AS answered_count, COUNT(*) FILTER (WHERE l.is_correct) AS correct_answer_count
                 FROM latest l
