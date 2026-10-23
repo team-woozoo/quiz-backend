@@ -123,7 +123,7 @@ class SubmissionRepositoryTest {
     void 내_퀴즈_목록은_최근_퀴즈부터_퀴즈_정보와_문제_수를_준다() {
         QuizFixture.Created newer = fixture().createQuiz(quiz.userId(), 2);
 
-        List<QuizSummary> summaries = submissionRepository.findQuizSummaries(quiz.userId());
+        List<QuizSummary> summaries = submissionRepository.findQuizSummaries(quiz.userId(), null);
 
         assertThat(summaries).extracting(QuizSummary::quizId).containsExactly(newer.quizId(), quiz.quizId());
         assertThat(summaries).extracting(QuizSummary::questionCount).containsExactly(2, 3);
@@ -135,7 +135,7 @@ class SubmissionRepositoryTest {
 
     @Test
     void 안_푼_퀴즈는_푼_횟수가_0_이고_최근_제출이_없다() {
-        QuizSummary summary = submissionRepository.findQuizSummaries(quiz.userId()).getFirst();
+        QuizSummary summary = submissionRepository.findQuizSummaries(quiz.userId(), null).getFirst();
 
         assertThat(summary.submissionCount()).isZero();
         assertThat(summary.lastSubmission()).isNull();
@@ -146,7 +146,7 @@ class SubmissionRepositoryTest {
         submitWith(quiz, 1);
         submitWith(quiz, 3);
 
-        QuizSummary summary = submissionRepository.findQuizSummaries(quiz.userId()).getFirst();
+        QuizSummary summary = submissionRepository.findQuizSummaries(quiz.userId(), null).getFirst();
 
         assertThat(summary.submissionCount()).isEqualTo(2);
         assertThat(summary.lastSubmission()).isNotNull();
@@ -158,7 +158,7 @@ class SubmissionRepositoryTest {
     void 남의_퀴즈는_내_목록에_없다() {
         QuizFixture.Created others = fixture().createQuiz("others@test.com", 1);
 
-        assertThat(submissionRepository.findQuizSummaries(quiz.userId()))
+        assertThat(submissionRepository.findQuizSummaries(quiz.userId(), null))
                 .extracting(QuizSummary::quizId)
                 .containsExactly(quiz.quizId())
                 .doesNotContain(others.quizId());
