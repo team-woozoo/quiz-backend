@@ -112,4 +112,32 @@ class QuizGraderTest {
         assertThat(QuizGrader.grade(multipleChoice, List.of(answer(201, 604))))
                 .containsExactly(new QuestionResult(201, 604L, false));
     }
+
+    // 오답 노트 복습은 화면을 넘길 때마다 푼 문제만 보낸다. 보내지 않은 문제를 틀림으로 만들면 안 된다
+    @Test
+    void 복습_채점은_보낸_문제만_보낸_순서대로_채점한다() {
+        List<QuestionResult> results = QuizGrader.gradeAnswered(OPTIONS, List.of(
+                answer(103, 522),
+                answer(102, 512)));
+
+        assertThat(results).containsExactly(
+                new QuestionResult(103, 522L, false),
+                new QuestionResult(102, 512L, true));
+    }
+
+    @Test
+    void 복습_채점도_같은_문제를_두_번_보내거나_다른_문제의_보기를_보내면_거절한다() {
+        assertThatThrownBy(() -> QuizGrader.gradeAnswered(OPTIONS, List.of(answer(101, 501), answer(101, 502))))
+                .isInstanceOf(InvalidSubmissionException.class);
+        assertThatThrownBy(() -> QuizGrader.gradeAnswered(OPTIONS, List.of(answer(101, 512))))
+                .isInstanceOf(InvalidSubmissionException.class);
+    }
+
+    // 채점할 수 있는 보기는 내 문제의 보기뿐이라, 그 밖의 보기는 남의 문제이거나 없는 보기다
+    @Test
+    void 복습_채점에서_받은_보기_밖의_보기를_보내면_거절한다() {
+        assertThatThrownBy(() -> QuizGrader.gradeAnswered(OPTIONS, List.of(answer(999, 9999))))
+                .isInstanceOf(InvalidSubmissionException.class)
+                .hasMessageContaining("optionId=9999");
+    }
 }

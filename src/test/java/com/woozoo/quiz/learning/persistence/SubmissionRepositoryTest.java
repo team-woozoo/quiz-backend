@@ -16,12 +16,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -162,5 +164,48 @@ class SubmissionRepositoryTest {
                 .extracting(QuizSummary::quizId)
                 .containsExactly(quiz.quizId())
                 .doesNotContain(others.quizId());
+    }
+
+    // 오답 노트 복습은 여러 퀴즈의 문제를 한 번에 보내서 퀴즈 없이 남는다
+    @Test
+    void 복습_제출은_퀴즈_없이_REVIEW_로_남는다() {
+        long submissionId = submissionRepository.saveReview(quiz.userId());
+
+        record SavedSubmission(long userId, Long quizId, String kind) {
+        }
+        assertThat(jdbcClient.sql("SELECT user_id, quiz_id, kind FROM submission WHERE id = :id")
+                .param("id", submissionId).query(SavedSubmission.class).single())
+                .isEqualTo(new SavedSubmission(quiz.userId(), null, "REVIEW"));
+    }
+
+    // 기록 탭의 날짜별 점수는 그날 퀴즈를 푼 결과라, 나중에 복습한 답이 섞이면 안 된다
+    @Test
+    void 복습_제출은_퀴즈의_푼_횟수와_최근_점수에_섞이지_않는다() {
+        submitWith(quiz, 1);
+        long reviewId = submissionRepository.saveReview(quiz.userId());
+        long q2 = quiz.questionIds().get(1);
+        submissionRepository.saveAnswers(reviewId, List.of(new QuestionResult(q2, quiz.correctOptionOf(q2), true)));
+
+        QuizSummary summary = submissionRepository.findQuizSummaries(quiz.userId(), null).getFirst();
+
+        assertThat(summary.submissionCount()).isEqualTo(1);
+        assertThat(summary.lastSubmission().correctCount()).isEqualTo(1);
+    }
+
+    // 실패한 INSERT 는 트랜잭션을 깨뜨려, 제약마다 테스트를 나눈다
+    @Test
+    void 퀴즈_제출에_퀴즈가_없으면_DB_가_막는다() {
+        assertThatThrownBy(() -> jdbcClient.sql("INSERT INTO submission (user_id, kind) VALUES (:userId, 'QUIZ')")
+                .param("userId", quiz.userId()).update())
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void 복습_제출에_퀴즈가_있으면_DB_가_막는다() {
+        assertThatThrownBy(() -> jdbcClient.sql("""
+                        INSERT INTO submission (user_id, quiz_id, kind) VALUES (:userId, :quizId, 'REVIEW')
+                        """)
+                .param("userId", quiz.userId()).param("quizId", quiz.quizId()).update())
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 }
