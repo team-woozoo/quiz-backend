@@ -44,6 +44,22 @@ public class MaterialConceptRepository {
                 .single();
     }
 
+    // 내 자료의 개념이면 그 행을 잠그고 true 를 준다. 같은 개념에 대표 개념을 두 번 만들지 않도록, 확인과 생성을 한 트랜잭션에서 줄 세운다
+    public boolean lockOwnedBy(long materialConceptId, long userId) {
+        return jdbcClient.sql("""
+                        SELECT mc.id
+                        FROM material_concept mc
+                        JOIN material m ON m.id = mc.material_id
+                        WHERE mc.id = :materialConceptId AND m.owner_id = :userId
+                        FOR UPDATE OF mc
+                        """)
+                .param("materialConceptId", materialConceptId)
+                .param("userId", userId)
+                .query(Long.class)
+                .optional()
+                .isPresent();
+    }
+
     // 기존 개념을 다시 쓰면 이미 이어진 청크가 또 올 수 있어 겹치면 넘어간다
     public void linkChunk(long materialConceptId, long materialChunkId) {
         jdbcClient.sql("""
