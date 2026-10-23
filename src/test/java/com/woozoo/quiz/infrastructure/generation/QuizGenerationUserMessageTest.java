@@ -8,6 +8,7 @@ import com.woozoo.quiz.quiz.port.SourceChunk;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -18,7 +19,7 @@ class QuizGenerationUserMessageTest {
         QuizGenerationRequest request = new QuizGenerationRequest(
                 List.of(new SourceChunk(1, "TCP는 연결 지향 프로토콜이다.\n신뢰성 있는 전송을 보장한다."),
                         new SourceChunk(2, "UDP는 비연결형이다.")),
-                QuizFormat.MULTIPLE_CHOICE, Difficulty.HARD, 10,
+                QuizFormat.MULTIPLE_CHOICE, Difficulty.HARD, 10, Map.of(),
                 List.of(new ExistingConcept("TCP 3-way handshake", "연결을 맺는 과정이다.")));
 
         assertThat(QuizGenerationUserMessage.from(request)).isEqualTo("""
@@ -47,7 +48,7 @@ class QuizGenerationUserMessageTest {
     @Test
     void 기존_개념이_없으면_없음이라고_적는다() {
         QuizGenerationRequest request = new QuizGenerationRequest(
-                List.of(new SourceChunk(1, "IP는 패킷을 전달한다.")), QuizFormat.OX, Difficulty.EASY, 5, List.of());
+                List.of(new SourceChunk(1, "IP는 패킷을 전달한다.")), QuizFormat.OX, Difficulty.EASY, 5, Map.of(), List.of());
 
         assertThat(QuizGenerationUserMessage.from(request)).contains("""
                 <existing_concepts>
@@ -61,7 +62,7 @@ class QuizGenerationUserMessageTest {
     void 원문의_기호와_공백을_바꾸지_않는다() {
         String code = "if (a < b && c > 0) {\n    return \"ok\";\n}";
         QuizGenerationRequest request = new QuizGenerationRequest(
-                List.of(new SourceChunk(3, code)), QuizFormat.OX, Difficulty.NORMAL, 1, List.of());
+                List.of(new SourceChunk(3, code)), QuizFormat.OX, Difficulty.NORMAL, 1, Map.of(), List.of());
 
         assertThat(QuizGenerationUserMessage.from(request))
                 .contains("<chunk seq=\"3\">\n" + code + "\n</chunk>");

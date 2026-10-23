@@ -5,6 +5,7 @@ import com.woozoo.quiz.global.error.BusinessException;
 import com.woozoo.quiz.global.error.ErrorCode;
 import com.woozoo.quiz.material.domain.StoredChunk;
 import com.woozoo.quiz.material.persistence.MaterialRepository;
+import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.domain.GenerationJob;
 import com.woozoo.quiz.quiz.persistence.GenerationJobRepository;
 import com.woozoo.quiz.quiz.port.ExistingConcept;
@@ -35,6 +36,7 @@ public class QuizGenerationWorker {
     private final GeneratedQuizValidator generatedQuizValidator;
     private final QuizWriter quizWriter;
     private final int questionCount;
+    private final Map<CognitiveType, Integer> cognitiveTypeCounts;
     private final ApplicationEventPublisher eventPublisher;
 
     public QuizGenerationWorker(GenerationJobRepository generationJobRepository,
@@ -44,6 +46,7 @@ public class QuizGenerationWorker {
                                 GeneratedQuizValidator generatedQuizValidator,
                                 QuizWriter quizWriter,
                                 @Value("${quiz.generation.question-count}") int questionCount,
+                                @Value("${quiz.generation.cognitive-mix}") String cognitiveMix,
                                 ApplicationEventPublisher eventPublisher) {
         this.generationJobRepository = generationJobRepository;
         this.materialRepository = materialRepository;
@@ -52,6 +55,7 @@ public class QuizGenerationWorker {
         this.generatedQuizValidator = generatedQuizValidator;
         this.quizWriter = quizWriter;
         this.questionCount = questionCount;
+        this.cognitiveTypeCounts = CognitiveMix.parse(cognitiveMix, questionCount);
         this.eventPublisher = eventPublisher;
     }
 
@@ -85,6 +89,7 @@ public class QuizGenerationWorker {
                 job.format(),
                 job.difficulty(),
                 questionCount,
+                cognitiveTypeCounts,
                 findExistingConcepts(job.materialId()));
 
         GeneratedQuiz generated = quizGenerationPort.generateQuiz(request);

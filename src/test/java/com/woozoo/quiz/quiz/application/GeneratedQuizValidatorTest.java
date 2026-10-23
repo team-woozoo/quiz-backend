@@ -16,6 +16,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -32,7 +33,7 @@ class GeneratedQuizValidatorTest {
     private final GeneratedQuizValidator validator = new GeneratedQuizValidator();
 
     private static QuizGenerationRequest request(QuizFormat format, int questionCount) {
-        return new QuizGenerationRequest(CHUNKS, format, Difficulty.NORMAL, questionCount, List.of());
+        return new QuizGenerationRequest(CHUNKS, format, Difficulty.NORMAL, questionCount, Map.of(), List.of());
     }
 
     private static List<GeneratedOption> oxOptions() {
@@ -335,7 +336,7 @@ class GeneratedQuizValidatorTest {
                 .map(quote -> question(quote, quote, 3, oxOptions()))
                 .toArray(GeneratedQuestion[]::new);
         QuizGenerationRequest slideRequest =
-                new QuizGenerationRequest(List.of(SLIDE), QuizFormat.OX, Difficulty.NORMAL, 10, List.of());
+                new QuizGenerationRequest(List.of(SLIDE), QuizFormat.OX, Difficulty.NORMAL, 10, Map.of(), List.of());
         return contentsOf(validator.validate(slideRequest,
                 new GeneratedQuiz(List.of(concept("엑셀", List.of(3), questions)))));
     }
