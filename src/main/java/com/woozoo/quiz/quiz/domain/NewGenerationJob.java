@@ -6,5 +6,11 @@ public record NewGenerationJob(
         Long materialId,
         QuizKind kind,
         QuizFormat format,
-        Difficulty difficulty) {
+        Difficulty difficulty,
+        // 약점 퀴즈가 겨냥하는 대표 개념. 일반 퀴즈는 null 이다
+        Long userConceptId) {
+
+    public NewGenerationJob(long userId, Long materialId, QuizKind kind, QuizFormat format, Difficulty difficulty) {
+        this(userId, materialId, kind, format, difficulty, null);
+    }
 }

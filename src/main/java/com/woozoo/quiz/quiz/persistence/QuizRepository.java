@@ -67,6 +67,37 @@ public class QuizRepository {
                 .update();
     }
 
+    // 약점 퀴즈가 어느 대표 개념을 보완하려고 만든 것인지 남긴다. 나중에 약점이 나아졌는지 볼 때 쓴다
+    public void saveWeaknessTarget(long quizId, long userConceptId) {
+        jdbcClient.sql("""
+                        INSERT INTO weakness_target (quiz_id, user_concept_id)
+                        VALUES (:quizId, :userConceptId)
+                        """)
+                .param("quizId", quizId)
+                .param("userConceptId", userConceptId)
+                .update();
+    }
+
+    // 내가 만든 퀴즈에서 이 개념들로 낸 문제 문장을 최근 것부터 준다
+    public List<String> findRecentQuestionContents(long userId, List<Long> materialConceptIds, int limit) {
+        if (materialConceptIds.isEmpty()) {
+            return List.of();
+        }
+        return jdbcClient.sql("""
+                        SELECT q.content
+                        FROM question q
+                        JOIN quiz qz ON qz.id = q.quiz_id
+                        WHERE qz.user_id = :userId AND q.material_concept_id IN (:materialConceptIds)
+                        ORDER BY q.id DESC
+                        LIMIT :limit
+                        """)
+                .param("userId", userId)
+                .param("materialConceptIds", materialConceptIds)
+                .param("limit", limit)
+                .query(String.class)
+                .list();
+    }
+
     public Optional<StoredQuiz> findById(long quizId) {
         return jdbcClient.sql("""
                         SELECT id, user_id, material_id, kind, format, difficulty

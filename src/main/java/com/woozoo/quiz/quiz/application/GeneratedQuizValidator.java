@@ -34,6 +34,7 @@ public class GeneratedQuizValidator {
     // 문제를 버린 이유. 프롬프트를 고칠 때 어느 규칙에서 많이 떨어지는지 보려고 센다
     enum Rejection {
         INVALID_CONCEPT,
+        OUTSIDE_FOCUS,
         NO_KNOWN_CHUNK,
         NULL_QUESTION,
         OPTION_COUNT,
@@ -64,6 +65,11 @@ public class GeneratedQuizValidator {
         for (GeneratedConcept concept : concepts) {
             if (!isValidConcept(concept)) {
                 count(rejected, Rejection.INVALID_CONCEPT, concept.questions().size());
+                countTypes(rejectedTypes, concept.questions());
+                continue;
+            }
+            if (!isInFocus(concept, request.focus())) {
+                count(rejected, Rejection.OUTSIDE_FOCUS, concept.questions().size());
                 countTypes(rejectedTypes, concept.questions());
                 continue;
             }
@@ -174,6 +180,12 @@ public class GeneratedQuizValidator {
         int trimmedCount = trimmedTypes.values().stream().mapToInt(Integer::intValue).sum();
         log.info("생성 결과 검증: 받은 문제 {}개, 남긴 문제 {}개, 버린 문제 {}개 {} 버린 유형 {}, 넘쳐서 뺀 문제 {}개 {}",
                 receivedCount, keptCount, rejectedCount, rejected, rejectedTypes, trimmedCount, trimmedTypes);
+    }
+
+    // 약점 퀴즈는 보낸 페이지에 다른 개념도 함께 있어, 겨냥한 개념의 문제만 남긴다.
+    // 생성기가 띄어쓰기나 기호를 바꿔 쓸 수 있어 인용과 같이 글자와 숫자만 비교한다
+    private boolean isInFocus(GeneratedConcept concept, ConceptFocus focus) {
+        return focus == null || normalize(concept.name()).equalsIgnoreCase(normalize(focus.name()));
     }
 
     // 이름 빈 값은 mergeSameName 에서 이미 걸렀다. 이름은 VARCHAR(255) 라 넘으면 저장이 실패한다
