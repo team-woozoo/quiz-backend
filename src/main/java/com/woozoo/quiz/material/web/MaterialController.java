@@ -7,7 +7,6 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,9 +14,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
-import java.util.List;
 
-@Tag(name = "Material", description = "강의 자료 업로드와 목록")
+@Tag(name = "Material", description = "강의 자료 업로드, 목록, 자료별 학습 기록")
 @RestController
 @RequestMapping("/materials")
 public class MaterialController {
@@ -40,14 +38,5 @@ public class MaterialController {
     public UploadMaterialResponse upload(@AuthenticationPrincipal Long userId,
                                          @Valid @ModelAttribute UploadMaterialRequest request) throws IOException {
         return new UploadMaterialResponse(materialService.upload(request.toCommand(userId)));
-    }
-
-    @Operation(operationId = "getMyMaterials", summary = "내 자료 목록",
-            description = "최근에 올린 자료부터 전체를 준다. pageCount 는 글자가 있어 저장된 페이지 수다. 오류: UNAUTHORIZED(401)")
-    @GetMapping
-    public List<MaterialResponse> getMyMaterials(@AuthenticationPrincipal Long userId) {
-        return materialService.getMyMaterials(userId).stream()
-                .map(MaterialResponse::from)
-                .toList();
     }
 }

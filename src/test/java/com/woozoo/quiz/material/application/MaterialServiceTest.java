@@ -6,7 +6,6 @@ import com.woozoo.quiz.global.error.ErrorCode;
 import com.woozoo.quiz.material.domain.FileType;
 import com.woozoo.quiz.material.domain.MaterialChunk;
 import com.woozoo.quiz.material.domain.NewMaterial;
-import com.woozoo.quiz.material.persistence.MaterialRepository;
 import com.woozoo.quiz.material.port.ExtractedPage;
 import com.woozoo.quiz.material.port.TextExtractionException;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,8 +31,6 @@ class MaterialServiceTest {
     @Autowired
     MaterialWriter materialWriter;
     @Autowired
-    MaterialRepository materialRepository;
-    @Autowired
     JdbcClient jdbcClient;
 
     private long ownerId;
@@ -55,7 +52,7 @@ class MaterialServiceTest {
 
     // 추출 포트는 가짜로 바꿔 PDF 없이 추출 결과를 정하고, 저장은 진짜 DB 에 한다
     private MaterialService serviceExtracting(List<ExtractedPage> pages) {
-        return new MaterialService((content, fileType) -> pages, materialWriter, materialRepository, MAX_PAGES);
+        return new MaterialService((content, fileType) -> pages, materialWriter, MAX_PAGES);
     }
 
     private UploadMaterialCommand command() {
@@ -126,7 +123,7 @@ class MaterialServiceTest {
         TextExtractionException cause = new TextExtractionException("PDF를 읽을 수 없습니다", null);
         MaterialService materialService = new MaterialService((content, fileType) -> {
             throw cause;
-        }, materialWriter, materialRepository, MAX_PAGES);
+        }, materialWriter, MAX_PAGES);
 
         assertThatThrownBy(() -> materialService.upload(command()))
                 .isInstanceOf(BusinessException.class)
@@ -141,7 +138,7 @@ class MaterialServiceTest {
     void PDF_로_시작하지_않는_파일은_추출하지_않고_거부한다() {
         MaterialService materialService = new MaterialService((content, fileType) -> {
             throw new AssertionError("PDF 가 아니면 추출까지 가지 않아야 한다");
-        }, materialWriter, materialRepository, MAX_PAGES);
+        }, materialWriter, MAX_PAGES);
         UploadMaterialCommand notPdf = new UploadMaterialCommand(
                 "hello".getBytes(StandardCharsets.UTF_8), ownerId, "제목", "note.pdf", FileType.PDF);
 

@@ -50,10 +50,11 @@ public class SubmissionRepository {
 
     // 퀴즈마다 따로 조회하지 않고 한 번에 가져온다. LATERAL 로 퀴즈마다 가장 최근 제출 하나를 붙이고,
     // 안 푼 퀴즈는 그 제출이 없어 null 이 된다. 자료 없이 만든 퀴즈도 빠지지 않게 자료는 LEFT JOIN 한다.
-    // 같은 순간에 제출이 둘이면(같은 트랜잭션 등) id 가 큰 것을 최근으로 본다
-    public List<QuizSummary> findQuizSummaries(long userId) {
+    // 같은 순간에 제출이 둘이면(같은 트랜잭션 등) id 가 큰 것을 최근으로 본다.
+    // materialId 가 null 이면 모든 퀴즈를, 아니면 그 자료로 만든 퀴즈만 준다. null 이면 타입을 알 수 없어 BIGINT 로 알려 준다
+    public List<QuizSummary> findQuizSummaries(long userId, Long materialId) {
         return jdbcClient.sql("""
-                        SELECT q.id, m.title AS material_title, q.format, q.difficulty, q.created_at,
+                        SELECT q.id, q.material_id, m.title AS material_title, q.format, q.difficulty, q.created_at,
                                (SELECT count(*) FROM question qu WHERE qu.quiz_id = q.id) AS question_count,
                                (SELECT count(*) FROM submission s WHERE s.quiz_id = q.id) AS submission_count,
                                last.submitted_at AS last_submitted_at,
@@ -69,9 +70,11 @@ public class SubmissionRepository {
                             LIMIT 1
                         ) last ON true
                         WHERE q.user_id = :userId
+                          AND (CAST(:materialId AS BIGINT) IS NULL OR q.material_id = :materialId)
                         ORDER BY q.id DESC
                         """)
                 .param("userId", userId)
+                .param("materialId", materialId)
                 .query((rs, rowNum) -> toQuizSummary(rs))
                 .list();
     }
@@ -85,6 +88,7 @@ public class SubmissionRepository {
 
         return new QuizSummary(
                 rs.getLong("id"),
+                rs.getObject("material_id", Long.class),
                 rs.getString("material_title"),
                 QuizFormat.valueOf(rs.getString("format")),
                 Difficulty.valueOf(rs.getString("difficulty")),

@@ -15,6 +15,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +45,8 @@ class QuizHistoryControllerTest {
     MaterialConceptRepository materialConceptRepository;
     @Autowired
     QuizRepository quizRepository;
+    @Autowired
+    JdbcClient jdbcClient;
 
     QuizFixture fixture;
     long userId;
@@ -114,6 +117,34 @@ class QuizHistoryControllerTest {
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].quizId").value(newer.quizId()))
                 .andExpect(jsonPath("$[1].quizId").value(older.quizId()));
+    }
+
+    // 기록 탭은 자료 하나로 만든 퀴즈만 보여 준다. QuizFixture 는 퀴즈마다 자료를 새로 만든다
+    @Test
+    void 자료를_주면_그_자료로_만든_퀴즈만_준다() throws Exception {
+        QuizFixture.Created picked = fixture.createQuiz(userId, 2);
+        fixture.createQuiz(userId, 1);
+        long materialId = jdbcClient.sql("SELECT material_id FROM quiz WHERE id = :id")
+                .param("id", picked.quizId()).query(Long.class).single();
+
+        mockMvc.perform(get("/quizzes").param("materialId", String.valueOf(materialId))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].quizId").value(picked.quizId()))
+                .andExpect(jsonPath("$[0].materialId").value(materialId));
+    }
+
+    @Test
+    void 남의_자료를_주면_빈_목록이다() throws Exception {
+        QuizFixture.Created others = fixture.createQuiz("other@test.com", 1);
+        long othersMaterialId = jdbcClient.sql("SELECT material_id FROM quiz WHERE id = :id")
+                .param("id", others.quizId()).query(Long.class).single();
+
+        mockMvc.perform(get("/quizzes").param("materialId", String.valueOf(othersMaterialId))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test

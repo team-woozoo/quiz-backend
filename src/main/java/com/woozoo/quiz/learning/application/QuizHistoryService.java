@@ -17,7 +17,7 @@ public class QuizHistoryService {
         this.submissionRepository = submissionRepository;
     }
 
-    public List<QuizSummary> getMyQuizzes(long userId) {
-        return submissionRepository.findQuizSummaries(userId);
+    public List<QuizSummary> getMyQuizzes(long userId, Long materialId) {
+        return submissionRepository.findQuizSummaries(userId, materialId);
     }
 }

@@ -10,6 +10,8 @@ import java.time.Instant;
 public record QuizSummaryResponse(
         long quizId,
         @Schema(nullable = true, description = "약점 퀴즈처럼 자료 없이 만든 퀴즈는 null")
+        Long materialId,
+        @Schema(nullable = true, description = "약점 퀴즈처럼 자료 없이 만든 퀴즈는 null")
         String materialTitle,
         QuizFormat format,
         Difficulty difficulty,
@@ -23,6 +25,7 @@ public record QuizSummaryResponse(
     public static QuizSummaryResponse from(QuizSummary summary) {
         return new QuizSummaryResponse(
                 summary.quizId(),
+                summary.materialId(),
                 summary.materialTitle(),
                 summary.format(),
                 summary.difficulty(),
