@@ -16,6 +16,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -32,7 +33,7 @@ class GeneratedQuizValidatorTest {
     private final GeneratedQuizValidator validator = new GeneratedQuizValidator();
 
     private static QuizGenerationRequest request(QuizFormat format, int questionCount) {
-        return new QuizGenerationRequest(CHUNKS, format, Difficulty.NORMAL, questionCount, List.of());
+        return new QuizGenerationRequest(CHUNKS, format, Difficulty.NORMAL, questionCount, Map.of(), List.of());
     }
 
     private static List<GeneratedOption> oxOptions() {
@@ -267,6 +268,61 @@ class GeneratedQuizValidatorTest {
         assertThat(contentsOf(result)).containsExactly("1", "2");
     }
 
+    private static GeneratedQuestion typedOx(String content, CognitiveType type) {
+        return new GeneratedQuestion(content, TCP_QUOTE, type, "해설", oxOptions(), 1);
+    }
+
+    private static QuizGenerationRequest mixRequest(int questionCount, Map<CognitiveType, Integer> mix) {
+        return new QuizGenerationRequest(CHUNKS, QuizFormat.OX, Difficulty.NORMAL, questionCount, mix, List.of());
+    }
+
+    // 개념 순서대로 자르면 자료 뒤쪽 개념의 평가 문제가 잘린다
+    @Test
+    void 넘치면_목표보다_많이_나온_유형에서_뒤쪽부터_뺀다() {
+        GeneratedQuiz generated = new GeneratedQuiz(List.of(
+                concept("앞쪽 개념", List.of(1),
+                        typedOx("기억", CognitiveType.REMEMBER),
+                        typedOx("이해 1", CognitiveType.UNDERSTAND),
+                        typedOx("이해 2", CognitiveType.UNDERSTAND)),
+                concept("뒤쪽 개념", List.of(1), typedOx("평가", CognitiveType.EVALUATE))));
+        Map<CognitiveType, Integer> mix = Map.of(
+                CognitiveType.REMEMBER, 1, CognitiveType.UNDERSTAND, 1, CognitiveType.EVALUATE, 1);
+
+        GeneratedQuiz result = validator.validate(mixRequest(3, mix), generated);
+
+        assertThat(contentsOf(result)).containsExactly("기억", "이해 1", "평가");
+    }
+
+    @Test
+    void 목표에_없는_유형부터_뺀다() {
+        GeneratedQuiz generated = new GeneratedQuiz(List.of(
+                concept("TCP", List.of(1),
+                        typedOx("분석", CognitiveType.ANALYZE),
+                        typedOx("기억 1", CognitiveType.REMEMBER),
+                        typedOx("기억 2", CognitiveType.REMEMBER))));
+
+        GeneratedQuiz result = validator.validate(mixRequest(2, Map.of(CognitiveType.REMEMBER, 2)), generated);
+
+        assertThat(contentsOf(result)).containsExactly("기억 1", "기억 2");
+    }
+
+    // 뺀 문제는 검증에서 떨어진 것이 아니라서 버린 문제와 따로 센다
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void 넘쳐서_뺀_문제는_유형별로_따로_로그에_남긴다(CapturedOutput output) {
+        GeneratedQuiz generated = new GeneratedQuiz(List.of(
+                concept("TCP", List.of(1),
+                        typedOx("기억", CognitiveType.REMEMBER),
+                        typedOx("이해 1", CognitiveType.UNDERSTAND),
+                        typedOx("이해 2", CognitiveType.UNDERSTAND))));
+        Map<CognitiveType, Integer> mix = Map.of(CognitiveType.REMEMBER, 1, CognitiveType.UNDERSTAND, 1);
+
+        validator.validate(mixRequest(2, mix), generated);
+
+        assertThat(output).contains("받은 문제 3개, 남긴 문제 2개, 버린 문제 0개")
+                .contains("넘쳐서 뺀 문제 1개 {UNDERSTAND=1}");
+    }
+
     @Test
     void 객관식은_보기_4개를_요구한다() {
         List<GeneratedOption> fourOptions = List.of(
@@ -304,7 +360,8 @@ class GeneratedQuizValidatorTest {
         assertThat(output).contains("받은 문제 5개, 남긴 문제 1개, 버린 문제 4개")
                 .contains("NO_KNOWN_CHUNK=1")
                 .contains("ANSWER_COUNT=1")
-                .contains("QUOTE_NOT_IN_SOURCE=2");
+                .contains("QUOTE_NOT_IN_SOURCE=2")
+                .contains("버린 유형 {REMEMBER=4}");
     }
 
     // 10개를 요청했는데 1개만 남았을 때, 버린 것 없이 받은 것도 1개면 AI 가 적게 만든 것이다
@@ -335,7 +392,7 @@ class GeneratedQuizValidatorTest {
                 .map(quote -> question(quote, quote, 3, oxOptions()))
                 .toArray(GeneratedQuestion[]::new);
         QuizGenerationRequest slideRequest =
-                new QuizGenerationRequest(List.of(SLIDE), QuizFormat.OX, Difficulty.NORMAL, 10, List.of());
+                new QuizGenerationRequest(List.of(SLIDE), QuizFormat.OX, Difficulty.NORMAL, 10, Map.of(), List.of());
         return contentsOf(validator.validate(slideRequest,
                 new GeneratedQuiz(List.of(concept("엑셀", List.of(3), questions)))));
     }
@@ -374,5 +431,91 @@ class GeneratedQuizValidatorTest {
     @Test
     void 기호를_무시해도_원문에_없는_글자가_있으면_버린다() {
         assertThat(validateSlideQuotes("셀(Cell) - 엑셀에서 데이터를 저장하는 가장 작은 단위")).isEmpty();
+    }
+
+    // 비교 문제는 같은 페이지의 떨어진 두 곳이 근거라, 모델이 사이를 건너뛰고 " / " 로 잇는다
+    @Test
+    void 떨어진_곳을_슬래시로_이은_인용은_조각마다_원문에_있으면_통과한다() {
+        assertThat(validateSlideQuotes("통합문서(W orkbook) / 엑셀에서 데이터가 기록되는 최소 저장 단위"))
+                .containsExactly("통합문서(W orkbook) / 엑셀에서 데이터가 기록되는 최소 저장 단위");
+    }
+
+    @Test
+    void 슬래시로_이은_조각_하나라도_원문에_없으면_버린다() {
+        assertThat(validateSlideQuotes("통합문서(Workbook) / 엑셀에서 데이터를 저장하는 가장 작은 단위")).isEmpty();
+    }
+
+    // 페이지 여기저기를 잘라 붙인 근거를 막는다
+    @Test
+    void 슬래시로_이은_조각이_세_개를_넘으면_버린다() {
+        assertThat(validateSlideQuotes("통합문서 / 엑셀 문서 / 셀(Cell) / 최소 저장 단위")).isEmpty();
+    }
+
+    // 모델은 " / " 대신 원문의 덩어리 사이에 있던 빈 줄을 남기고 그 사이 줄들을 건너뛰곤 한다
+    @Test
+    void 빈_줄로_건너뛴_인용은_덩어리마다_원문에_있으면_통과한다() {
+        String skipped = "• 통합문서(W orkbook)\n\n• 엑셀에서 데이터가 기록되는 최소 저장 단위";
+        String spacedBlankLine = "• 통합문서(W orkbook)\n   \n• 셀(Cell)";
+
+        assertThat(validateSlideQuotes(skipped, spacedBlankLine)).containsExactly(skipped, spacedBlankLine);
+    }
+
+    @Test
+    void 빈_줄로_나눈_덩어리_하나라도_원문에_없으면_버린다() {
+        assertThat(validateSlideQuotes("• 통합문서(W orkbook)\n\n• 엑셀에서 데이터를 저장하는 가장 작은 단위")).isEmpty();
+    }
+
+    // 원문에 빈 줄이 많은 곳을 이어서 인용해도 페이지를 잘라 붙인 것이 아니므로, 개수 제한은 " / " 만 센다
+    @Test
+    void 빈_줄로_나뉜_덩어리는_조각_개수_제한에_세지_않는다() {
+        assertThat(validateSlideQuotes(SLIDE.content())).containsExactly(SLIDE.content());
+    }
+
+    // 앞뒤 빈 줄을 그대로 나누면 빈 조각이 생겨 기호만 있는 인용처럼 버려진다
+    @Test
+    void 앞뒤에_빈_줄이_붙은_인용도_통과한다() {
+        String quote = "\n\n• 셀(Cell)\n• 엑셀에서 데이터가 기록되는 최소 저장 단위\n\n";
+
+        assertThat(validateSlideQuotes(quote)).containsExactly(quote);
+    }
+
+    // 모델은 건너뛴 자리에 "..." 줄을 넣기도 한다
+    @Test
+    void 말줄임표_줄로_건너뛴_인용은_줄마다_원문에_있으면_통과한다() {
+        String quote = "• 통합문서(W orkbook)\n...\n• 엑셀에서 데이터가 기록되는 최소 저장 단위";
+
+        assertThat(validateSlideQuotes(quote)).containsExactly(quote);
+    }
+
+    // 표시 없이 줄만 바꿔 사이 줄을 빼기도 한다. 줄마다 원문 그대로라 근거로 보여 줄 수 있다
+    @Test
+    void 표시_없이_줄을_건너뛴_인용도_통과한다() {
+        String quote = "• 통합문서(W orkbook)\n• 셀(Cell)";
+
+        assertThat(validateSlideQuotes(quote)).containsExactly(quote);
+    }
+
+    // 원문에 있는 줄들이라도 순서를 바꾸면 원문과 다른 근거가 된다
+    @Test
+    void 줄_순서를_바꾼_인용은_버린다() {
+        assertThat(validateSlideQuotes("• 셀(Cell)\n• 통합문서(W orkbook)")).isEmpty();
+    }
+
+    // 한 줄 안에서는 어디를 건너뛰었는지 알 수 없어, 고쳐 쓴 문장과 구별하지 못하고 버린다
+    @Test
+    void 한_줄_안에서_건너뛴_인용은_버린다() {
+        assertThat(validateSlideQuotes("• 통합문서(W orkbook) • 셀(Cell)")).isEmpty();
+    }
+
+    // 원문의 URL 이나 경로처럼 공백 없이 붙은 / 는 조각을 나누지 않는다
+    @Test
+    void 공백_없이_붙은_슬래시는_조각을_나누지_않는다() {
+        SourceChunk path = new SourceChunk(4, "저장 경로는 C:/data/report.xlsx 이다");
+        QuizGenerationRequest pathRequest =
+                new QuizGenerationRequest(List.of(path), QuizFormat.OX, Difficulty.NORMAL, 10, Map.of(), List.of());
+        GeneratedQuestion pathQuote = question("경로", "C:/data/report.xlsx", 4, oxOptions());
+
+        assertThat(contentsOf(validator.validate(pathRequest,
+                new GeneratedQuiz(List.of(concept("경로", List.of(4), pathQuote)))))).containsExactly("경로");
     }
 }

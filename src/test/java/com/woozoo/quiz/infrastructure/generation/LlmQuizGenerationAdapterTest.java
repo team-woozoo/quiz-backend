@@ -26,6 +26,7 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.core.io.ClassPathResource;
 
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,7 +38,7 @@ class LlmQuizGenerationAdapterTest {
 
     private static final QuizGenerationRequest REQUEST = new QuizGenerationRequest(
             List.of(new SourceChunk(1, "TCP는 연결 지향 프로토콜이다.")),
-            QuizFormat.OX, Difficulty.NORMAL, 1, List.of());
+            QuizFormat.OX, Difficulty.NORMAL, 1, Map.of(), List.of());
 
     // 게이트웨이가 돌려주는 모양 그대로다. 필드 이름은 GeneratedQuiz 레코드에서 만든 스키마를 따른다
     private static final String QUIZ_JSON = """

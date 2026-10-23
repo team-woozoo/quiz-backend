@@ -1,8 +1,12 @@
 package com.woozoo.quiz.infrastructure.generation;
 
+import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.port.ExistingConcept;
 import com.woozoo.quiz.quiz.port.QuizGenerationRequest;
 import com.woozoo.quiz.quiz.port.SourceChunk;
+
+import java.util.Map;
+import java.util.stream.Collectors;
 
 // 요청마다 LLM 에 보낼 user 메시지를 만든다. 규칙은 system 프롬프트(prompts/quiz-generation-system.md)에 있고,
 // 여기에는 이번 요청의 조건, 기존 개념, 강의 자료만 넣는다.
@@ -27,8 +31,21 @@ final class QuizGenerationUserMessage {
         message.append("<conditions>\n")
                 .append("format: ").append(request.format().name()).append('\n')
                 .append("difficulty: ").append(request.difficulty().name()).append('\n')
-                .append("questionCount: ").append(request.questionCount()).append('\n')
-                .append("</conditions>\n\n");
+                .append("questionCount: ").append(request.questionCount()).append('\n');
+        appendCognitiveTypes(message, request.cognitiveTypeCounts());
+        message.append("</conditions>\n\n");
+    }
+
+    // system 프롬프트 뒤쪽에 개수를 적었을 때는 모델이 지키지 않았다. 답을 쓰기 직전에 보는 이 자리에 둔다
+    private static void appendCognitiveTypes(StringBuilder message, Map<CognitiveType, Integer> counts) {
+        if (counts.isEmpty()) {
+            return;
+        }
+        message.append("cognitiveTypes: ")
+                .append(counts.entrySet().stream()
+                        .map(entry -> entry.getKey().name() + " " + entry.getValue())
+                        .collect(Collectors.joining(", ")))
+                .append('\n');
     }
 
     // 빈 태그만 두면 모델이 무엇을 기대하는지 헷갈릴 수 있어, 없으면 없다고 적는다

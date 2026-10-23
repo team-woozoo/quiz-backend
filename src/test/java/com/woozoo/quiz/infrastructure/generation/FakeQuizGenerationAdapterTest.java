@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,7 +30,7 @@ class FakeQuizGenerationAdapterTest {
     private final FakeQuizGenerationAdapter adapter = new FakeQuizGenerationAdapter(Duration.ZERO);
 
     private static QuizGenerationRequest request(QuizFormat format, int questionCount, List<SourceChunk> chunks) {
-        return new QuizGenerationRequest(chunks, format, Difficulty.NORMAL, questionCount, List.of());
+        return new QuizGenerationRequest(chunks, format, Difficulty.NORMAL, questionCount, Map.of(), List.of());
     }
 
     private static List<GeneratedQuestion> questionsOf(GeneratedQuiz quiz) {
