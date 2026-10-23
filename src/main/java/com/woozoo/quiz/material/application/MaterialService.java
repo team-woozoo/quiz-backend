@@ -3,10 +3,8 @@ package com.woozoo.quiz.material.application;
 import com.woozoo.quiz.global.error.BusinessException;
 import com.woozoo.quiz.global.error.ErrorCode;
 import com.woozoo.quiz.material.domain.MaterialChunk;
-import com.woozoo.quiz.material.domain.MaterialSummary;
 import com.woozoo.quiz.material.domain.NewMaterial;
 import com.woozoo.quiz.material.domain.PageText;
-import com.woozoo.quiz.material.persistence.MaterialRepository;
 import com.woozoo.quiz.material.port.ExtractedPage;
 import com.woozoo.quiz.material.port.TextExtractionException;
 import com.woozoo.quiz.material.port.TextExtractionPort;
@@ -26,16 +24,13 @@ public class MaterialService {
 
     private final TextExtractionPort textExtractionPort;
     private final MaterialWriter materialWriter;
-    private final MaterialRepository materialRepository;
     private final int maxPages;
 
     public MaterialService(TextExtractionPort textExtractionPort,
                            MaterialWriter materialWriter,
-                           MaterialRepository materialRepository,
                            @Value("${material.upload.max-pages}") int maxPages) {
         this.textExtractionPort = textExtractionPort;
         this.materialWriter = materialWriter;
-        this.materialRepository = materialRepository;
         this.maxPages = maxPages;
     }
 
@@ -66,10 +61,6 @@ public class MaterialService {
         List<MaterialChunk> chunks = MaterialChunk.fromPages(pageTexts);
 
         return materialWriter.save(newMaterial, chunks);
-    }
-
-    public List<MaterialSummary> getMyMaterials(long ownerId) {
-        return materialRepository.findSummariesByOwnerId(ownerId);
     }
 
     private List<ExtractedPage> extract(UploadMaterialCommand command) {
