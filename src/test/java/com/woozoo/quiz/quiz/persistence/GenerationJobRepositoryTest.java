@@ -104,6 +104,24 @@ class GenerationJobRepositoryTest {
         assertThat(job.status()).isEqualTo(GenerationStatus.PENDING);
         assertThat(job.quizId()).isNull();
         assertThat(job.errorCode()).isNull();
+        assertThat(job.userConceptId()).isNull();
+    }
+
+    // 약점 작업은 자료 없이 겨냥한 대표 개념을 들고 있다
+    @Test
+    void 약점_작업은_자료_없이_대표_개념과_함께_조회된다() {
+        long userConceptId = jdbcClient.sql("""
+                        INSERT INTO user_concept (user_id, name, description) VALUES (:userId, 'TCP', '설명') RETURNING id
+                        """)
+                .param("userId", userId).query(Long.class).single();
+
+        long jobId = generationJobRepository.create(new NewGenerationJob(
+                userId, null, QuizKind.WEAKNESS, QuizFormat.OX, Difficulty.NORMAL, userConceptId));
+
+        GenerationJob job = find(jobId);
+        assertThat(job.kind()).isEqualTo(QuizKind.WEAKNESS);
+        assertThat(job.materialId()).isNull();
+        assertThat(job.userConceptId()).isEqualTo(userConceptId);
     }
 
     @Test

@@ -53,4 +53,21 @@ class CognitiveMixTest {
         assertThatThrownBy(() -> CognitiveMix.parse("REMEMBER:10,APPLY:0", 10))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    private static final Map<CognitiveType, Integer> WEAKNESS_MIX =
+            CognitiveMix.parse("REMEMBER:1,UNDERSTAND:1,APPLY:2,ANALYZE:1", 5);
+
+    // 재료가 적을수록 높은 유형의 근거가 먼저 모자라, 높은 유형부터 뺀다
+    @Test
+    void 문제_수를_줄이면_높은_유형부터_뺀다() {
+        assertThat(CognitiveMix.limitTo(WEAKNESS_MIX, 3)).containsExactly(
+                entry(CognitiveType.REMEMBER, 1),
+                entry(CognitiveType.UNDERSTAND, 1),
+                entry(CognitiveType.APPLY, 1));
+    }
+
+    @Test
+    void 줄일_필요가_없으면_그대로다() {
+        assertThat(CognitiveMix.limitTo(WEAKNESS_MIX, 5)).isEqualTo(WEAKNESS_MIX);
+    }
 }

@@ -3,6 +3,7 @@ package com.woozoo.quiz.infrastructure.generation;
 import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
+import com.woozoo.quiz.quiz.port.ConceptFocus;
 import com.woozoo.quiz.quiz.port.ExistingConcept;
 import com.woozoo.quiz.quiz.port.QuizGenerationRequest;
 import com.woozoo.quiz.quiz.port.SourceChunk;
@@ -76,6 +77,42 @@ class QuizGenerationUserMessageTest {
                 <existing_concepts>
                 없음
                 </existing_concepts>
+                """);
+    }
+
+    // 약점 퀴즈는 기존 개념 목록 대신 겨냥한 개념과 이미 낸 문제를 보낸다
+    @Test
+    void 겨냥한_개념이_있으면_기존_개념_대신_개념과_이미_낸_문제를_적는다() {
+        QuizGenerationRequest request = new QuizGenerationRequest(
+                List.of(new SourceChunk(1, "TCP는 연결 지향 프로토콜이다.")), QuizFormat.OX, Difficulty.NORMAL, 5, Map.of(),
+                List.of(), new ConceptFocus("TCP 연결 과정", "연결을 맺는 과정이다.", List.of("TCP는 연결형인가?")));
+
+        String message = QuizGenerationUserMessage.from(request);
+
+        assertThat(message).doesNotContain("<existing_concepts>").contains("""
+                <focus_concept>
+                name: TCP 연결 과정
+                description: 연결을 맺는 과정이다.
+                </focus_concept>
+
+                <asked_questions>
+                - TCP는 연결형인가?
+                </asked_questions>
+
+                <material>
+                """);
+    }
+
+    @Test
+    void 이미_낸_문제가_없으면_없음이라고_적는다() {
+        QuizGenerationRequest request = new QuizGenerationRequest(
+                List.of(new SourceChunk(1, "IP는 패킷을 전달한다.")), QuizFormat.OX, Difficulty.NORMAL, 5, Map.of(),
+                List.of(), new ConceptFocus("IP", "패킷 전달", List.of()));
+
+        assertThat(QuizGenerationUserMessage.from(request)).contains("""
+                <asked_questions>
+                없음
+                </asked_questions>
                 """);
     }
 

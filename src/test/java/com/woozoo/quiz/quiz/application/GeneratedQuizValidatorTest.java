@@ -3,6 +3,7 @@ package com.woozoo.quiz.quiz.application;
 import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
+import com.woozoo.quiz.quiz.port.ConceptFocus;
 import com.woozoo.quiz.quiz.port.GeneratedConcept;
 import com.woozoo.quiz.quiz.port.GeneratedOption;
 import com.woozoo.quiz.quiz.port.GeneratedQuestion;
@@ -342,6 +343,23 @@ class GeneratedQuizValidatorTest {
         GeneratedQuiz result = validator.validate(request(QuizFormat.OX, 10), new GeneratedQuiz(null));
 
         assertThat(result.concepts()).isEmpty();
+    }
+
+    // 약점 퀴즈는 보낸 페이지에 다른 개념도 있어, 겨냥한 개념의 문제만 남긴다. 띄어쓰기와 기호, 대소문자는 가리지 않는다
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void 겨냥한_개념이_있으면_그_개념의_문제만_남긴다(CapturedOutput output) {
+        QuizGenerationRequest focused = new QuizGenerationRequest(CHUNKS, QuizFormat.OX, Difficulty.NORMAL, 10,
+                Map.of(), List.of(), new ConceptFocus("TCP 연결", "설명", List.of()));
+        GeneratedQuiz generated = new GeneratedQuiz(List.of(
+                concept("TCP 연결", List.of(1), validOx("이름 그대로")),
+                concept("tcp-연결!", List.of(1), validOx("기호만 다름")),
+                concept("UDP", List.of(2), question("다른 개념", UDP_QUOTE, 2, oxOptions()))));
+
+        GeneratedQuiz result = validator.validate(focused, generated);
+
+        assertThat(contentsOf(result)).containsExactly("이름 그대로", "기호만 다름");
+        assertThat(output).contains("OUTSIDE_FOCUS=1");
     }
 
     // 프롬프트를 고칠 때 볼 로그다. 이유는 처음 걸린 규칙 하나로 센다

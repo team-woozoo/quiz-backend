@@ -5,6 +5,7 @@ import com.woozoo.quiz.SyncTaskExecutorConfiguration;
 import com.woozoo.quiz.TestcontainersConfiguration;
 import com.woozoo.quiz.auth.domain.NewUser;
 import com.woozoo.quiz.auth.persistence.UserRepository;
+import com.woozoo.quiz.concept.persistence.MaterialConceptRepository;
 import com.woozoo.quiz.global.security.JwtProvider;
 import com.woozoo.quiz.material.domain.FileType;
 import com.woozoo.quiz.material.domain.MaterialChunk;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -46,6 +48,8 @@ class QuizGenerationControllerTest {
     UserRepository userRepository;
     @Autowired
     MaterialRepository materialRepository;
+    @Autowired
+    MaterialConceptRepository materialConceptRepository;
     @Autowired
     JdbcClient jdbcClient;
     @Value("${quiz.generation.daily-limit}")
@@ -176,6 +180,78 @@ class QuizGenerationControllerTest {
         insertJobs(1, "PENDING");
 
         requestGeneration(ownerToken, materialId, """
+                {"format": "OX", "difficulty": "NORMAL"}
+                """)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("GENERATION_IN_PROGRESS"));
+    }
+
+    // 가짜 생성기는 개념이 나온 페이지마다 문제 하나를 만든다
+    private long tcpConceptOnBothPages() {
+        long conceptId = materialConceptRepository.findOrCreate(materialId, "TCP", "연결 지향 전송");
+        materialRepository.findChunks(materialId)
+                .forEach(chunk -> materialConceptRepository.linkChunk(conceptId, chunk.id()));
+        return conceptId;
+    }
+
+    private ResultActions requestWeaknessGeneration(String token, long conceptId, String body) throws Exception {
+        return mockMvc.perform(post("/concepts/{conceptId}/quizzes", conceptId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body));
+    }
+
+    @Test
+    void 약한_개념으로_요청하면_202_와_작업을_받고_DONE_이_되면_자료_없는_퀴즈가_만들어진다() throws Exception {
+        long conceptId = tcpConceptOnBothPages();
+
+        String body = requestWeaknessGeneration(ownerToken, conceptId, """
+                {"format": "OX", "difficulty": "NORMAL"}
+                """)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").isNumber())
+                .andReturn().getResponse().getContentAsString();
+        long jobId = ((Number) JsonPath.read(body, "$.jobId")).longValue();
+
+        String job = getJob(ownerToken, jobId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DONE"))
+                .andReturn().getResponse().getContentAsString();
+        long quizId = ((Number) JsonPath.read(job, "$.quizId")).longValue();
+
+        mockMvc.perform(get("/quizzes/{quizId}", quizId).header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.materialId").value(nullValue()))
+                .andExpect(jsonPath("$.questions.length()").value(2))
+                .andExpect(jsonPath("$.questions[0].conceptName").value("TCP"))
+                .andExpect(jsonPath("$.questions[1].conceptName").value("TCP"));
+    }
+
+    @Test
+    void 남의_개념으로_요청하면_404_CONCEPT_NOT_FOUND_다() throws Exception {
+        long conceptId = tcpConceptOnBothPages();
+
+        requestWeaknessGeneration(otherToken, conceptId, """
+                {"format": "OX", "difficulty": "NORMAL"}
+                """)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CONCEPT_NOT_FOUND"));
+    }
+
+    @Test
+    void 약한_개념으로_요청할_때도_형식이나_난이도가_없으면_400_이다() throws Exception {
+        requestWeaknessGeneration(ownerToken, tcpConceptOnBothPages(), """
+                {"format": "OX"}
+                """)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+    }
+
+    @Test
+    void 약한_개념으로_요청할_때도_진행_중인_작업이_있으면_409_다() throws Exception {
+        insertJobs(1, "PROCESSING");
+
+        requestWeaknessGeneration(ownerToken, tcpConceptOnBothPages(), """
                 {"format": "OX", "difficulty": "NORMAL"}
                 """)
                 .andExpect(status().isConflict())
