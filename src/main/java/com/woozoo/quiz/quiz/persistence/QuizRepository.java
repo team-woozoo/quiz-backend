@@ -8,6 +8,7 @@ import com.woozoo.quiz.quiz.domain.StoredQuiz;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -121,6 +122,25 @@ public class QuizRepository {
                         """)
                 .param("quizId", quizId)
                 .query(StoredQuestion.class)
+                .list();
+    }
+
+    // 여러 퀴즈에 흩어진 문제의 보기를 한 번에 가져온다. 내 퀴즈의 문제만 주어서, 남의 문제는 보기가 없는 것처럼 보인다
+    public List<StoredOption> findOptionsOfMyQuestions(long userId, Collection<Long> questionIds) {
+        if (questionIds.isEmpty()) {
+            return List.of();
+        }
+        return jdbcClient.sql("""
+                        SELECT o.id, o.question_id, o.order_no, o.content, o.is_correct
+                        FROM question_option o
+                        JOIN question q ON q.id = o.question_id
+                        JOIN quiz qz ON qz.id = q.quiz_id
+                        WHERE qz.user_id = :userId AND o.question_id IN (:questionIds)
+                        ORDER BY o.question_id, o.order_no
+                        """)
+                .param("userId", userId)
+                .param("questionIds", questionIds)
+                .query(StoredOption.class)
                 .list();
     }
 

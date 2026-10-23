@@ -34,6 +34,18 @@ public class SubmissionRepository {
                 .single();
     }
 
+    // 오답 노트 복습은 여러 퀴즈의 문제를 한 번에 보내 퀴즈 없이 남긴다
+    public long saveReview(long userId) {
+        return jdbcClient.sql("""
+                INSERT INTO submission (user_id, kind)
+                VALUES (:userId, 'REVIEW')
+                RETURNING id
+                """)
+                .param("userId", userId)
+                .query(Long.class)
+                .single();
+    }
+
     public void saveAnswers(long submissionId, List<QuestionResult> results) {
         for(QuestionResult questionResult : results) {
             jdbcClient.sql("""

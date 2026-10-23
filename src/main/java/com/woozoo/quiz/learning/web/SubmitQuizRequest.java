@@ -1,5 +1,6 @@
 package com.woozoo.quiz.learning.web;
 
+import com.woozoo.quiz.learning.application.ReviewCommand;
 import com.woozoo.quiz.learning.application.SubmitQuizCommand;
 import com.woozoo.quiz.learning.domain.SubmittedAnswer;
 import jakarta.validation.Valid;
@@ -19,12 +20,21 @@ public record SubmitQuizRequest (
                                   @NotNull Long optionId){}
 
     public SubmitQuizCommand toCommand(long userId, long quizId) {
+        return new SubmitQuizCommand(userId, quizId, toAnswers());
+    }
+
+    // 오답 노트 복습도 같은 모양으로 답을 받는다
+    public ReviewCommand toReviewCommand(long userId) {
+        return new ReviewCommand(userId, toAnswers());
+    }
+
+    private List<SubmittedAnswer> toAnswers() {
         List<SubmittedAnswer> submittedAnswers = new ArrayList<>();
         for(AnswerRequest answerRequest : answers) {
             SubmittedAnswer submittedAnswer =
                     new SubmittedAnswer(answerRequest.questionId, answerRequest.optionId);
             submittedAnswers.add(submittedAnswer);
         }
-        return new SubmitQuizCommand(userId, quizId, submittedAnswers);
+        return submittedAnswers;
     }
 }

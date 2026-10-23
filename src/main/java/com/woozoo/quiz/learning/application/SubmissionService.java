@@ -51,14 +51,7 @@ public class SubmissionService {
         long submissionId = submissionRepository.save(newSubmission);
         submissionRepository.saveAnswers(submissionId, results);
 
-        for(QuestionResult result : results) {
-            WrongAnswerKey key = new WrongAnswerKey(command.userId(), result.questionId());
-            if(result.correct()) {
-                wrongAnswerRepository.resolve(key);
-            } else {
-                wrongAnswerRepository.recordWrong(key);
-            }
-        }
+        wrongAnswerRepository.apply(command.userId(), results);
         return new SubmissionResult(submissionId, results);
     }
 }
