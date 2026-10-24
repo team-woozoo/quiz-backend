@@ -17,6 +17,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 을 .env 에 설정해야 한다}
       LLM_BASE_URL: ${LLM_BASE_URL:?LLM_BASE_URL 을 .env 에 설정해야 한다}
       LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY 를 .env 에 설정해야 한다}
+      # 하루 생성 횟수. 비우면 application.properties 의 기본값(15)을 쓴다
+      QUIZ_GENERATION_DAILY_LIMIT: ${QUIZ_GENERATION_DAILY_LIMIT:-15}
     ports:
       - "8080:8080"
     mem_limit: 1g
