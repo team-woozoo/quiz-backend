@@ -72,7 +72,7 @@ class MaterialStudyRepositoryTest {
 
     // 2쪽은 글자가 없는 페이지라 청크가 없다고 보고, 청크 번호와 페이지 번호가 어긋나게 둔다
     private long createMaterial(long ownerId, String title) {
-        long id = materialRepository.save(new NewMaterial(ownerId, title, "lecture.pdf", FileType.PDF));
+        long id = materialRepository.save(new NewMaterial(ownerId, title, "lecture.pdf", FileType.PDF, 30));
         materialRepository.saveChunks(id, List.of(
                 new MaterialChunk(1, 1, "1쪽"),
                 new MaterialChunk(2, 3, "3쪽"),

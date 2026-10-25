@@ -168,6 +168,7 @@ class WrongAnswerRepositoryTest {
             assertThat(question.explanation()).isEqualTo("해설");
             assertThat(question.sourceQuote()).isEqualTo("TCP는 연결 지향 프로토콜이다.");
             assertThat(question.sourcePageNo()).isEqualTo(1);
+            assertThat(question.totalPageCount()).isEqualTo(30);
             assertThat(question.conceptName()).isEqualTo("TCP");
             assertThat(question.materialTitle()).isEqualTo("네트워크 5강");
             assertThat(question.wrongCount()).isEqualTo(2);

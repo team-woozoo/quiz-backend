@@ -33,14 +33,15 @@ public class MaterialRepository {
 
     public long save(NewMaterial newMaterial) {
         return jdbcClient.sql("""
-                        INSERT INTO material (owner_id, title, original_filename, file_type)
-                        VALUES (:ownerId, :title, :originalFilename, :fileType)
+                        INSERT INTO material (owner_id, title, original_filename, file_type, total_page_count)
+                        VALUES (:ownerId, :title, :originalFilename, :fileType, :totalPageCount)
                         RETURNING id
                         """)
                 .param("ownerId", newMaterial.ownerId())
                 .param("title", newMaterial.title())
                 .param("originalFilename", newMaterial.originalFilename())
                 .param("fileType", newMaterial.fileType().name())
+                .param("totalPageCount", newMaterial.totalPageCount())
                 .query(Long.class)
                 .single();
     }

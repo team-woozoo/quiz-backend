@@ -6,6 +6,7 @@ import com.woozoo.quiz.global.error.ErrorCode;
 import com.woozoo.quiz.material.domain.FileType;
 import com.woozoo.quiz.material.domain.MaterialChunk;
 import com.woozoo.quiz.material.domain.NewMaterial;
+import com.woozoo.quiz.material.port.ExtractedDocument;
 import com.woozoo.quiz.material.port.ExtractedPage;
 import com.woozoo.quiz.material.port.TextExtractionException;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,12 +48,15 @@ class MaterialServiceTest {
     }
 
     private static final int MAX_PAGES = 3;
+    // 글자 있는 페이지보다 크게 잡아, 저장되는 쪽수가 청크 수가 아니라 원본 쪽수인지 가린다
+    private static final int TOTAL_PAGES = 5;
     // 서비스는 앞 바이트로 PDF 인지만 본다. 추출은 가짜 포트가 하므로 나머지 내용은 상관없다
     private static final byte[] PDF_CONTENT = "%PDF-1.7 fake".getBytes(StandardCharsets.US_ASCII);
 
     // 추출 포트는 가짜로 바꿔 PDF 없이 추출 결과를 정하고, 저장은 진짜 DB 에 한다
     private MaterialService serviceExtracting(List<ExtractedPage> pages) {
-        return new MaterialService((content, fileType) -> pages, materialWriter, MAX_PAGES);
+        return new MaterialService((content, fileType) -> new ExtractedDocument(TOTAL_PAGES, pages),
+                materialWriter, MAX_PAGES);
     }
 
     private UploadMaterialCommand command() {
@@ -65,7 +69,7 @@ class MaterialServiceTest {
 
     private NewMaterial savedMaterial(long materialId) {
         return jdbcClient.sql("""
-                SELECT owner_id, title, original_filename, file_type
+                SELECT owner_id, title, original_filename, file_type, total_page_count
                 FROM material
                 WHERE id = :id
                 """)
@@ -75,7 +79,7 @@ class MaterialServiceTest {
     }
 
     @Test
-    void 업로드하면_자료와_청크를_저장한다() {
+    void 업로드하면_원본_쪽수와_함께_자료와_청크를_저장한다() {
         MaterialService materialService = serviceExtracting(List.of(
                 new ExtractedPage(1, "first page"),
                 new ExtractedPage(3, "third page")));
@@ -83,14 +87,14 @@ class MaterialServiceTest {
         long materialId = materialService.upload(command());
 
         NewMaterial material = jdbcClient.sql("""
-                SELECT owner_id, title, original_filename, file_type
+                SELECT owner_id, title, original_filename, file_type, total_page_count
                 FROM material
                 WHERE id = :id
                 """)
                 .param("id", materialId)
                 .query(NewMaterial.class)
                 .single();
-        assertThat(material).isEqualTo(new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF));
+        assertThat(material).isEqualTo(new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, TOTAL_PAGES));
 
         List<MaterialChunk> chunks = jdbcClient.sql("""
                 SELECT seq, page_no, content

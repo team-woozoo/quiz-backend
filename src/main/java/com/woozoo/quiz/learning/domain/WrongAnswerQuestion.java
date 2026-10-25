@@ -16,6 +16,7 @@ public record WrongAnswerQuestion(
         String explanation,
         String sourceQuote,
         Integer sourcePageNo,
+        int totalPageCount,
         String conceptName,
         long materialId,
         String materialTitle,

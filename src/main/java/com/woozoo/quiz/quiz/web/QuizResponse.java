@@ -38,6 +38,8 @@ public record QuizResponse(
             String sourceQuote,
             @Schema(nullable = true, description = "근거가 있는 원본 PDF 쪽 번호")
             Integer sourcePageNo,
+            @Schema(description = "근거가 있는 원본 PDF 의 전체 쪽수. 글자 없는 페이지도 센다")
+            int totalPageCount,
             List<OptionResponse> options) {
 
         static QuestionResponse from(QuizDetail.QuestionDetail detail) {
@@ -51,6 +53,7 @@ public record QuizResponse(
                     question.explanation(),
                     question.sourceQuote(),
                     question.sourcePageNo(),
+                    question.totalPageCount(),
                     detail.options().stream().map(OptionResponse::from).toList());
         }
     }

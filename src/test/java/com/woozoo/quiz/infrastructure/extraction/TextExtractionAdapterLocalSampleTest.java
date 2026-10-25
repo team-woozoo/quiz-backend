@@ -29,7 +29,7 @@ class TextExtractionAdapterLocalSampleTest {
 
         byte[] content = Files.readAllBytes(SIMPLE_PDF);
         List<ExtractedPage> extractedPages =
-                springAiTextExtractionAdapter.extractPages(content, FileType.PDF);
+                springAiTextExtractionAdapter.extractPages(content, FileType.PDF).pages();
 
         List<Integer> pageNos = extractedPages.stream()
                 .map(ExtractedPage::pageNo)

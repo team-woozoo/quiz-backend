@@ -67,7 +67,7 @@ public class WrongAnswerRepository {
     public List<WrongAnswerQuestion> findUnresolved(long userId) {
         return jdbcClient.sql("""
                         SELECT q.id AS question_id, q.quiz_id, qz.format, q.content, q.cognitive_type, q.explanation,
-                               q.source_quote, c.page_no AS source_page_no, mc.name AS concept_name,
+                               q.source_quote, c.page_no AS source_page_no, m.total_page_count, mc.name AS concept_name,
                                m.id AS material_id, m.title AS material_title, wa.wrong_count, wa.last_wrong_at
                         FROM wrong_answer wa
                         JOIN question q ON q.id = wa.question_id
@@ -94,6 +94,7 @@ public class WrongAnswerRepository {
                 rs.getString("explanation"),
                 rs.getString("source_quote"),
                 rs.getObject("source_page_no", Integer.class),
+                rs.getInt("total_page_count"),
                 rs.getString("concept_name"),
                 rs.getLong("material_id"),
                 rs.getString("material_title"),

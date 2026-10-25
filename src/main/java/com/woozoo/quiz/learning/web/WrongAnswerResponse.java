@@ -25,6 +25,8 @@ public record WrongAnswerResponse(
         String sourceQuote,
         @Schema(nullable = true, description = "근거가 있는 PDF 페이지 번호(1부터)")
         Integer sourcePageNo,
+        @Schema(description = "근거가 있는 PDF 의 전체 쪽수. 글자 없는 페이지도 센다")
+        int totalPageCount,
         @Schema(description = "orderNo 순서. 정답 보기는 isCorrect 가 true 다")
         List<OptionResponse> options,
         @Schema(description = "이 문제를 틀린 횟수. 퀴즈와 오답 노트에서 틀린 것을 모두 센다")
@@ -46,6 +48,7 @@ public record WrongAnswerResponse(
                 question.explanation(),
                 question.sourceQuote(),
                 question.sourcePageNo(),
+                question.totalPageCount(),
                 note.options().stream().map(OptionResponse::from).toList(),
                 question.wrongCount(),
                 question.lastWrongAt());

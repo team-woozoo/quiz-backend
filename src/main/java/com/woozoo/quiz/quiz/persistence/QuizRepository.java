@@ -113,9 +113,10 @@ public class QuizRepository {
     public List<StoredQuestion> findQuestions(long quizId) {
         return jdbcClient.sql("""
                         SELECT q.id, q.order_no, q.content, q.cognitive_type, q.explanation, q.source_quote,
-                               c.page_no AS source_page_no, mc.name AS concept_name
+                               c.page_no AS source_page_no, m.total_page_count, mc.name AS concept_name
                         FROM question q
                         JOIN material_chunk c ON c.id = q.source_chunk_id
+                        JOIN material m ON m.id = c.material_id
                         JOIN material_concept mc ON mc.id = q.material_concept_id
                         WHERE q.quiz_id = :quizId
                         ORDER BY q.order_no

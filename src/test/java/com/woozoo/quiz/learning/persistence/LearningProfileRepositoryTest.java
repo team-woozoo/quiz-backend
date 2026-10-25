@@ -75,7 +75,7 @@ class LearningProfileRepositoryTest {
     }
 
     private Material createMaterial(long ownerId, String title) {
-        long materialId = materialRepository.save(new NewMaterial(ownerId, title, "lecture.pdf", FileType.PDF));
+        long materialId = materialRepository.save(new NewMaterial(ownerId, title, "lecture.pdf", FileType.PDF, 30));
         materialRepository.saveChunks(materialId, List.of(new MaterialChunk(1, 1, "원문")));
         return new Material(materialId, materialRepository.findChunks(materialId).getFirst().id());
     }

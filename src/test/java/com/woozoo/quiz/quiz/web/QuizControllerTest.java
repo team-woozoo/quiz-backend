@@ -90,6 +90,7 @@ class QuizControllerTest {
                 .andExpect(jsonPath("$.questions[0].orderNo").value(1))
                 .andExpect(jsonPath("$.questions[0].sourceQuote").value("TCP is connection oriented"))
                 .andExpect(jsonPath("$.questions[0].sourcePageNo").value(1))
+                .andExpect(jsonPath("$.questions[0].totalPageCount").value(2))
                 .andExpect(jsonPath("$.questions[0].conceptName").isString())
                 .andExpect(jsonPath("$.questions[0].cognitiveType").value("REMEMBER"))
                 .andExpect(jsonPath("$.questions[0].explanation").isString())
@@ -99,7 +100,8 @@ class QuizControllerTest {
                 .andExpect(jsonPath("$.questions[0].options[0].isCorrect").value(true))
                 .andExpect(jsonPath("$.questions[0].options[1].isCorrect").value(false))
                 .andExpect(jsonPath("$.questions[1].orderNo").value(2))
-                .andExpect(jsonPath("$.questions[1].sourcePageNo").value(2));
+                .andExpect(jsonPath("$.questions[1].sourcePageNo").value(2))
+                .andExpect(jsonPath("$.questions[1].totalPageCount").value(2));
     }
 
     @Test
