@@ -104,6 +104,7 @@ class WrongAnswerControllerTest {
                 .andExpect(jsonPath("$[0].explanation").value("해설"))
                 .andExpect(jsonPath("$[0].sourceQuote").value("TCP는 연결 지향 프로토콜이다."))
                 .andExpect(jsonPath("$[0].sourcePageNo").value(1))
+                .andExpect(jsonPath("$[0].totalPageCount").value(30))
                 .andExpect(jsonPath("$[0].options.length()").value(2))
                 .andExpect(jsonPath("$[0].options[0].optionId").value(quiz.correctOptionOf(q2)))
                 .andExpect(jsonPath("$[0].options[0].isCorrect").value(true))
