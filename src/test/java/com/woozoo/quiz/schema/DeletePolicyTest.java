@@ -37,7 +37,7 @@ public class DeletePolicyTest {
         insert("INSERT INTO refresh_token (user_id, token_hash, expires_at) VALUES (?, ?, now() + interval '14 days') RETURNING id",
                 userId, "a".repeat(64));
 
-        Long materialId = insert("INSERT INTO material (owner_id, title, original_filename, file_type) VALUES (?, ?, ?, ?) RETURNING id",
+        Long materialId = insert("INSERT INTO material (owner_id, title, original_filename, file_type, total_page_count) VALUES (?, ?, ?, ?, 30) RETURNING id",
                 userId, "네트워크 3주차", "network-03.pdf", "PDF");
         Long chunkId = insert("INSERT INTO material_chunk (material_id, seq, page_no, content) VALUES (?, ?, ?, ?) RETURNING id",
                 materialId, 1, 1, "클라이언트는 먼저 SYN 패킷을 보낸다.");
@@ -153,7 +153,7 @@ public class DeletePolicyTest {
     }
 
     private MaterialFixture insertMaterial(Long userId, String title) {
-        Long materialId = insert("INSERT INTO material (owner_id, title, original_filename, file_type) VALUES (?, ?, ?, 'PDF') RETURNING id",
+        Long materialId = insert("INSERT INTO material (owner_id, title, original_filename, file_type, total_page_count) VALUES (?, ?, ?, 'PDF', 30) RETURNING id",
                 userId, title, title + ".pdf");
         Long chunkId = insert("INSERT INTO material_chunk (material_id, seq, page_no, content) VALUES (?, 1, 1, ?) RETURNING id",
                 materialId, "클라이언트는 먼저 SYN 패킷을 보낸다.");

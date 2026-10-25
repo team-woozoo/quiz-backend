@@ -89,7 +89,7 @@ class WeaknessQuizGenerationTest {
     @BeforeEach
     void setup() {
         userId = userRepository.save(new NewUser("weakness@test.com", "1234", "홍길동"));
-        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF));
+        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30));
         materialRepository.saveChunks(materialId, List.of(
                 new MaterialChunk(1, 1, PAGE_1), new MaterialChunk(2, 3, PAGE_3), new MaterialChunk(3, 4, PAGE_4)));
         List<StoredChunk> chunks = materialRepository.findChunks(materialId);

@@ -61,7 +61,7 @@ public class QuizFixture {
 
     // OX 문제 questionCount 개짜리 퀴즈. 문제마다 보기 O 가 정답이다
     public Created createQuiz(long userId, int questionCount) {
-        long materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF));
+        long materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30));
         materialRepository.saveChunks(materialId, List.of(new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다.")));
         long chunkId = materialRepository.findChunks(materialId).getFirst().id();
         long conceptId = materialConceptRepository.findOrCreate(materialId, "TCP", "연결 지향 전송");

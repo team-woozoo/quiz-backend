@@ -1,6 +1,7 @@
 package com.woozoo.quiz.infrastructure.extraction;
 
 import com.woozoo.quiz.material.domain.FileType;
+import com.woozoo.quiz.material.port.ExtractedDocument;
 import com.woozoo.quiz.material.port.ExtractedPage;
 import com.woozoo.quiz.material.port.TextExtractionException;
 import com.woozoo.quiz.material.port.TextExtractionPort;
@@ -25,14 +26,14 @@ public class SpringAiTextExtractionAdapter implements TextExtractionPort {
                     .build();
 
     @Override
-    public List<ExtractedPage> extractPages(byte[] content, FileType fileType) {
+    public ExtractedDocument extractPages(byte[] content, FileType fileType) {
         Resource resource = new ByteArrayResource(content);
 
         try (CloseablePdfReader reader = new CloseablePdfReader(resource, DEFAULT_CONFIG)){
 
             List<Document> documents = reader.get();
 
-            return documents.stream()
+            List<ExtractedPage> pages = documents.stream()
                     .map(document -> {
                         // 리더가 글자 없는 페이지를 결과에서 빼므로, 페이지 번호는 목록 순서가 아니라 메타데이터에서 꺼낸다.
                         Integer pageNo = (Integer) document.getMetadata()
@@ -42,6 +43,7 @@ public class SpringAiTextExtractionAdapter implements TextExtractionPort {
                         return new ExtractedPage(pageNo, text);
                     })
                     .toList();
+            return new ExtractedDocument(reader.totalPageCount(), pages);
         } catch (Exception e) {
             throw new TextExtractionException("PDF를 읽을 수 없습니다", e);
         }
@@ -59,6 +61,10 @@ public class SpringAiTextExtractionAdapter implements TextExtractionPort {
     private static class CloseablePdfReader extends PagePdfDocumentReader implements AutoCloseable {
         CloseablePdfReader(Resource resource, PdfDocumentReaderConfig config) {
             super(resource, config);
+        }
+        // 리더의 결과에는 글자 없는 페이지가 빠져 있어 전체 쪽수는 열어 둔 PDDocument 에서 센다
+        int totalPageCount() {
+            return document.getNumberOfPages();
         }
         @Override
         public void close() throws IOException {

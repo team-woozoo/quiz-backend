@@ -73,7 +73,7 @@ class JobEventsControllerTest {
         ownerToken = jwtProvider.createAccessToken(ownerId);
         otherToken = jwtProvider.createAccessToken(userRepository.save(new NewUser("other@test.com", "1234", "남")));
 
-        materialId = materialRepository.save(new NewMaterial(ownerId, "네트워크 5강", "05.pdf", FileType.PDF));
+        materialId = materialRepository.save(new NewMaterial(ownerId, "네트워크 5강", "05.pdf", FileType.PDF, 30));
         materialRepository.saveChunks(materialId, List.of(new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다.")));
     }
 

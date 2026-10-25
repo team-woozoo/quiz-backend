@@ -5,7 +5,7 @@ import com.woozoo.quiz.global.error.ErrorCode;
 import com.woozoo.quiz.material.domain.MaterialChunk;
 import com.woozoo.quiz.material.domain.NewMaterial;
 import com.woozoo.quiz.material.domain.PageText;
-import com.woozoo.quiz.material.port.ExtractedPage;
+import com.woozoo.quiz.material.port.ExtractedDocument;
 import com.woozoo.quiz.material.port.TextExtractionException;
 import com.woozoo.quiz.material.port.TextExtractionPort;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,9 +40,9 @@ public class MaterialService {
             throw new BusinessException(ErrorCode.INVALID_FILE);
         }
 
-        List<ExtractedPage> extractedPages = extract(command);
+        ExtractedDocument extracted = extract(command);
 
-        List<PageText> pageTexts = extractedPages.stream()
+        List<PageText> pageTexts = extracted.pages().stream()
                 .map(extractedPage -> new PageText(extractedPage.pageNo(),
                         extractedPage.text()))
                 .toList();
@@ -57,13 +57,13 @@ public class MaterialService {
 
         String originalFilename = fileNameOf(command.originalFilename());
         NewMaterial newMaterial = new NewMaterial(command.ownerId(), titleOf(command.title(), originalFilename),
-                originalFilename, command.fileType());
+                originalFilename, command.fileType(), extracted.totalPageCount());
         List<MaterialChunk> chunks = MaterialChunk.fromPages(pageTexts);
 
         return materialWriter.save(newMaterial, chunks);
     }
 
-    private List<ExtractedPage> extract(UploadMaterialCommand command) {
+    private ExtractedDocument extract(UploadMaterialCommand command) {
         try {
             return textExtractionPort.extractPages(command.content(), command.fileType());
         }catch (TextExtractionException e) {

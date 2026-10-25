@@ -64,7 +64,7 @@ class QuizGenerationFailureTest {
     @BeforeEach
     void setup() {
         userId = userRepository.save(new NewUser("failure@test.com", "1234", "홍길동"));
-        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF));
+        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30));
         materialRepository.saveChunks(materialId, List.of(new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다.")));
     }
 

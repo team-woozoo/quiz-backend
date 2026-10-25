@@ -48,7 +48,7 @@ class GenerationJobRepositoryTest {
     @BeforeEach
     void setup() {
         userId = userRepository.save(new NewUser("job@test.com", "1234", "홍길동"));
-        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "network.pdf", FileType.PDF));
+        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "network.pdf", FileType.PDF, 30));
     }
 
     private long createJob() {
@@ -60,7 +60,7 @@ class GenerationJobRepositoryTest {
     private long createJobOfNewUser(String email) {
         long otherUserId = userRepository.save(new NewUser(email, "1234", "다른 사용자"));
         long otherMaterialId = materialRepository.save(
-                new NewMaterial(otherUserId, "운영체제 3강", "os.pdf", FileType.PDF));
+                new NewMaterial(otherUserId, "운영체제 3강", "os.pdf", FileType.PDF, 30));
         return generationJobRepository.create(
                 new NewGenerationJob(otherUserId, otherMaterialId, QuizKind.NORMAL, QuizFormat.OX, Difficulty.NORMAL));
     }

@@ -96,7 +96,7 @@ class MaterialStudyControllerTest {
     void 내_자료_목록은_자료마다_문제_수와_정답_오답_정답률을_준다() throws Exception {
         QuizFixture.Created quiz = fixture.createQuiz(userId, 4);
         submitFirstCorrect(quiz);
-        long untouched = materialRepository.save(new NewMaterial(userId, "운영체제 6주차", "06.pdf", FileType.PDF));
+        long untouched = materialRepository.save(new NewMaterial(userId, "운영체제 6주차", "06.pdf", FileType.PDF, 30));
 
         getWithToken("/materials")
                 .andExpect(status().isOk())
@@ -119,7 +119,7 @@ class MaterialStudyControllerTest {
 
     @Test
     void 퀴즈를_만드는_중인_자료는_generating_이_true_다() throws Exception {
-        long materialId = materialRepository.save(new NewMaterial(userId, "데이터베이스 정규화", "db.pdf", FileType.PDF));
+        long materialId = materialRepository.save(new NewMaterial(userId, "데이터베이스 정규화", "db.pdf", FileType.PDF, 30));
         generationJobRepository.create(new NewGenerationJob(userId, materialId, QuizKind.NORMAL,
                 QuizFormat.MULTIPLE_CHOICE, Difficulty.NORMAL));
 

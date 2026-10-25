@@ -1,6 +1,7 @@
 package com.woozoo.quiz.infrastructure.extraction;
 
 import com.woozoo.quiz.material.domain.FileType;
+import com.woozoo.quiz.material.port.ExtractedDocument;
 import com.woozoo.quiz.material.port.ExtractedPage;
 import com.woozoo.quiz.material.port.TextExtractionException;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -53,9 +54,19 @@ class SpringAiTextExtractionAdapterTest {
         byte[] pdf = pdfWithPages("first page", "", "third page");
 
         List<ExtractedPage> extractedPages =
-                springAiTextExtractionAdapter.extractPages(pdf, FileType.PDF);
+                springAiTextExtractionAdapter.extractPages(pdf, FileType.PDF).pages();
 
         assertThat(extractedPages).extracting(ExtractedPage::pageNo).containsExactly(1,3);
+    }
+
+    @Test
+    void 전체_쪽수는_글자_없는_페이지까지_센다() throws IOException {
+        byte[] pdf = pdfWithPages("first page", "", "third page", "");
+
+        ExtractedDocument extracted = springAiTextExtractionAdapter.extractPages(pdf, FileType.PDF);
+
+        assertThat(extracted.pages()).hasSize(2);
+        assertThat(extracted.totalPageCount()).isEqualTo(4);
     }
 
     @Test
@@ -63,7 +74,7 @@ class SpringAiTextExtractionAdapterTest {
         byte[] pdf = pdfWithPages("hello           world");
 
         List<ExtractedPage> extractedPages =
-                springAiTextExtractionAdapter.extractPages(pdf, FileType.PDF);
+                springAiTextExtractionAdapter.extractPages(pdf, FileType.PDF).pages();
 
         assertThat(extractedPages.getFirst().text()).isEqualTo("hello world");
     }

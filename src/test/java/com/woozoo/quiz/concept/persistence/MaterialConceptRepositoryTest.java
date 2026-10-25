@@ -41,8 +41,8 @@ class MaterialConceptRepositoryTest {
     @BeforeEach
     void setup() {
         long userId = userRepository.save(new NewUser("concept@test.com", "1234", "홍길동"));
-        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF));
-        otherMaterialId = materialRepository.save(new NewMaterial(userId, "네트워크 6강", "06.pdf", FileType.PDF));
+        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30));
+        otherMaterialId = materialRepository.save(new NewMaterial(userId, "네트워크 6강", "06.pdf", FileType.PDF, 30));
     }
 
     // 개념 저장은 퀴즈 저장 단계에서 만들어서, 지금은 직접 넣는다
