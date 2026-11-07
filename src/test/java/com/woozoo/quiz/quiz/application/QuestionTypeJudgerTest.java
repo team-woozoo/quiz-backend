@@ -46,7 +46,7 @@ class QuestionTypeJudgerTest {
     }
 
     private static JudgedQuestionType judged(int index, CognitiveType type) {
-        return new JudgedQuestionType(index, type);
+        return new JudgedQuestionType(index, null, type);
     }
 
     private static List<String> contentsOf(GeneratedQuiz quiz) {

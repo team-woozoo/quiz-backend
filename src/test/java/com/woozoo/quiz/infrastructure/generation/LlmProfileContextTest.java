@@ -1,6 +1,8 @@
 package com.woozoo.quiz.infrastructure.generation;
 
 import com.woozoo.quiz.TestcontainersConfiguration;
+import com.woozoo.quiz.infrastructure.validation.LlmQuestionTypeJudgeAdapter;
+import com.woozoo.quiz.quiz.port.QuestionTypeJudgePort;
 import com.woozoo.quiz.quiz.port.QuizGenerationPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ChatModel;
@@ -31,6 +33,14 @@ class LlmProfileContextTest {
         assertThat(context.getBeansOfType(QuizGenerationPort.class).values())
                 .singleElement()
                 .isInstanceOf(LlmQuizGenerationAdapter.class);
+    }
+
+    // 가짜 판정기가 남으면 실제 문제는 REMEMBER 가 아닌 한 모두 떨어진다
+    @Test
+    void llm_프로필에서는_LLM_어댑터만_판정기로_뜬다() {
+        assertThat(context.getBeansOfType(QuestionTypeJudgePort.class).values())
+                .singleElement()
+                .isInstanceOf(LlmQuestionTypeJudgeAdapter.class);
     }
 
     @Test

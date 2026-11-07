@@ -86,9 +86,9 @@ class QuestionTypeJudgeFlowTest {
     @Test
     void 판정이_일치한_문제만_저장하고_작업은_DONE_이_된다() {
         given(questionTypeJudgePort.judge(any())).willReturn(List.of(
-                new JudgedQuestionType(0, CognitiveType.REMEMBER),
-                new JudgedQuestionType(1, CognitiveType.UNDERSTAND),
-                new JudgedQuestionType(2, CognitiveType.REMEMBER)));
+                new JudgedQuestionType(0, null, CognitiveType.REMEMBER),
+                new JudgedQuestionType(1, null, CognitiveType.UNDERSTAND),
+                new JudgedQuestionType(2, null, CognitiveType.REMEMBER)));
 
         GenerationJob job = requestAndGetJob();
 
@@ -99,9 +99,9 @@ class QuestionTypeJudgeFlowTest {
     @Test
     void 모두_불일치하면_NO_VALID_QUESTIONS_가_되고_퀴즈는_남지_않는다() {
         given(questionTypeJudgePort.judge(any())).willReturn(List.of(
-                new JudgedQuestionType(0, CognitiveType.APPLY),
-                new JudgedQuestionType(1, CognitiveType.APPLY),
-                new JudgedQuestionType(2, CognitiveType.APPLY)));
+                new JudgedQuestionType(0, null, CognitiveType.APPLY),
+                new JudgedQuestionType(1, null, CognitiveType.APPLY),
+                new JudgedQuestionType(2, null, CognitiveType.APPLY)));
 
         GenerationJob job = requestAndGetJob();
 

@@ -25,7 +25,7 @@ public class FakeQuestionTypeJudgeAdapter implements QuestionTypeJudgePort {
     @Override
     public List<JudgedQuestionType> judge(List<QuestionToJudgeType> questions) {
         return questions.stream()
-                .map(question -> new JudgedQuestionType(question.index(),
+                .map(question -> new JudgedQuestionType(question.index(), null,
                         typeOf(question.index())))
                 .toList();
     }

@@ -15,6 +15,8 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 // 생성기가 붙인 유형을 다른 모델의 판정과 견준다. 유형이 틀리면 약점 분석이 틀린 진단을 내려서,
@@ -64,21 +66,32 @@ public class QuestionTypeJudger {
     }
 
     // 모델은 판정을 빠뜨리거나 순서를 바꿀 수 있어, 응답의 위치가 아니라 번호로 문제를 찾는다.
-    // 판정이 없는 문제는 일치를 확인할 수 없어 뺀다. 문제가 다 빠진 개념은 저장하지 않는다
+    // 판정이 없는 문제는 일치를 확인할 수 없어 뺀다. 문제가 다 빠진 개념은 저장하지 않는다.
+    // 일치만 남기는 정책이 맞는지 판단하려고 생성 유형과 판정 유형의 조합별 개수를 남긴다. 강의 내용은 남기지 않는다.
+    // 어느 쪽 유형이 맞는지 사람이 보려면 문제와 이유가 필요해, 강의 내용이 든 불일치 내용은 debug 로만 남긴다
     private GeneratedQuiz filterMatched(GeneratedQuiz quiz, List<JudgedQuestionType> judgedQuestions) {
-        Map<Integer, CognitiveType> judgedByIndex = judgedQuestions.stream()
-                .collect(Collectors.toMap(JudgedQuestionType::index, JudgedQuestionType::cognitiveType,
+        Map<Integer, JudgedQuestionType> judgedByIndex = judgedQuestions.stream()
+                .collect(Collectors.toMap(JudgedQuestionType::index, Function.identity(),
                         (first, second) -> first));
 
         List<GeneratedConcept> matchedConcepts = new ArrayList<>();
+        Map<String, Integer> typePairs = new TreeMap<>();
+        int matchedCount = 0;
 
         int index = 0;
         for (GeneratedConcept concept : quiz.concepts()) {
             List<GeneratedQuestion> matchedQuestions = new ArrayList<>();
             for (GeneratedQuestion question : concept.questions()) {
-                CognitiveType type = judgedByIndex.get(index++);
+                JudgedQuestionType judged = judgedByIndex.get(index++);
+                CognitiveType type = judged == null ? null : judged.cognitiveType();
+                typePairs.merge(question.cognitiveType() + "->" + type, 1, Integer::sum);
                 if (type == question.cognitiveType()) {
                     matchedQuestions.add(question);
+                    matchedCount++;
+                } else {
+                    log.debug("유형 불일치: {} -> {}\n문제: {}\n보기: {}\n인용: {}\n이유: {}",
+                            question.cognitiveType(), type, question.content(), question.options(),
+                            question.sourceQuote(), judged == null ? null : judged.reason());
                 }
             }
             if (!matchedQuestions.isEmpty()) {
@@ -86,6 +99,7 @@ public class QuestionTypeJudger {
                         concept.chunkSeqs(), matchedQuestions));
             }
         }
+        log.info("유형 판정 결과: 보낸 문제 {}개, 남긴 문제 {}개, 생성 유형->판정 유형 {}", index, matchedCount, typePairs);
         return new GeneratedQuiz(matchedConcepts);
     }
 }
