@@ -102,8 +102,9 @@ class WeaknessQuizGenerationTest {
         materialConceptRepository.linkChunk(udp, chunkIdByPage.get(3));
     }
 
+    // 기본 판정기는 모두 REMEMBER 로 판정하므로, 판정에서 떨어지지 않게 같은 유형을 붙인다
     private static GeneratedQuestion question(String content, String quote, int seq) {
-        return new GeneratedQuestion(content, quote, CognitiveType.APPLY, "해설",
+        return new GeneratedQuestion(content, quote, CognitiveType.REMEMBER, "해설",
                 List.of(new GeneratedOption("O", true), new GeneratedOption("X", false)), seq);
     }
 

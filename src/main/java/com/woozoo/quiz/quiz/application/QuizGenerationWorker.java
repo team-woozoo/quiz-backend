@@ -52,6 +52,7 @@ public class QuizGenerationWorker {
     private final int askedQuestionLimit;
     private final int weaknessQuestionsPerPage;
     private final ApplicationEventPublisher eventPublisher;
+    private final QuestionTypeJudger questionTypeJudger;
 
     public QuizGenerationWorker(GenerationJobRepository generationJobRepository,
                                 MaterialRepository materialRepository,
@@ -67,7 +68,7 @@ public class QuizGenerationWorker {
                                 @Value("${quiz.generation.weakness.cognitive-mix}") String weaknessCognitiveMix,
                                 @Value("${quiz.generation.weakness.asked-question-limit}") int askedQuestionLimit,
                                 @Value("${quiz.generation.weakness.questions-per-page}") int weaknessQuestionsPerPage,
-                                ApplicationEventPublisher eventPublisher) {
+                                ApplicationEventPublisher eventPublisher, QuestionTypeJudger questionTypeJudger) {
         this.generationJobRepository = generationJobRepository;
         this.materialRepository = materialRepository;
         this.materialConceptRepository = materialConceptRepository;
@@ -77,6 +78,7 @@ public class QuizGenerationWorker {
         this.generatedQuizValidator = generatedQuizValidator;
         this.quizWriter = quizWriter;
         this.questionCount = questionCount;
+        this.questionTypeJudger = questionTypeJudger;
         this.cognitiveTypeCounts = CognitiveMix.parse(cognitiveMix, questionCount);
         this.weaknessQuestionCount = weaknessQuestionCount;
         this.weaknessCognitiveTypeCounts = CognitiveMix.parse(weaknessCognitiveMix, weaknessQuestionCount);
@@ -172,14 +174,16 @@ public class QuizGenerationWorker {
         quizWriter.saveWeakness(job, validated, chunkIdBySeq, materialConceptIdByChunkId);
     }
 
+    // 판정은 AI 호출이라 비용이 들어서, 규칙 검증을 통과한 문제만 보낸다
     private GeneratedQuiz generateAndValidate(QuizGenerationRequest request) {
         GeneratedQuiz generated = quizGenerationPort.generateQuiz(request);
         GeneratedQuiz validated = generatedQuizValidator.validate(request, generated);
+        GeneratedQuiz judged = questionTypeJudger.keepMatched(request.chunks(), validated);
 
-        if (validated.concepts().isEmpty()) {
+        if (judged.concepts().isEmpty()) {
             throw new BusinessException(ErrorCode.NO_VALID_QUESTIONS);
         }
-        return validated;
+        return judged;
     }
 
     private List<ExistingConcept> findExistingConcepts(long materialId) {
