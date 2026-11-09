@@ -9,6 +9,7 @@ import com.woozoo.quiz.global.error.ErrorCode;
 import com.woozoo.quiz.material.domain.StoredChunk;
 import com.woozoo.quiz.material.persistence.MaterialRepository;
 import com.woozoo.quiz.quiz.domain.CognitiveType;
+import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.GenerationJob;
 import com.woozoo.quiz.quiz.domain.QuizKind;
 import com.woozoo.quiz.quiz.persistence.GenerationJobRepository;
@@ -45,8 +46,8 @@ public class QuizGenerationWorker {
     private final QuizGenerationPort quizGenerationPort;
     private final GeneratedQuizValidator generatedQuizValidator;
     private final QuizWriter quizWriter;
+    private final Map<Difficulty, Map<CognitiveType, Integer>> cognitiveTypeCountsByDifficulty;
     private final int questionCount;
-    private final Map<CognitiveType, Integer> cognitiveTypeCounts;
     private final int weaknessQuestionCount;
     private final Map<CognitiveType, Integer> weaknessCognitiveTypeCounts;
     private final int askedQuestionLimit;
@@ -62,8 +63,10 @@ public class QuizGenerationWorker {
                                 QuizGenerationPort quizGenerationPort,
                                 GeneratedQuizValidator generatedQuizValidator,
                                 QuizWriter quizWriter,
+                                @Value("${quiz.generation.cognitive-mix.easy}") String easyMix,
+                                @Value("${quiz.generation.cognitive-mix.normal}") String normalMix,
+                                @Value("${quiz.generation.cognitive-mix.hard}") String hardMix,
                                 @Value("${quiz.generation.question-count}") int questionCount,
-                                @Value("${quiz.generation.cognitive-mix}") String cognitiveMix,
                                 @Value("${quiz.generation.weakness.question-count}") int weaknessQuestionCount,
                                 @Value("${quiz.generation.weakness.cognitive-mix}") String weaknessCognitiveMix,
                                 @Value("${quiz.generation.weakness.asked-question-limit}") int askedQuestionLimit,
@@ -77,14 +80,18 @@ public class QuizGenerationWorker {
         this.quizGenerationPort = quizGenerationPort;
         this.generatedQuizValidator = generatedQuizValidator;
         this.quizWriter = quizWriter;
+        this.cognitiveTypeCountsByDifficulty = Map.of(
+                Difficulty.EASY, CognitiveMix.parse(easyMix, questionCount),
+                Difficulty.NORMAL, CognitiveMix.parse(normalMix, questionCount),
+                Difficulty.HARD, CognitiveMix.parse(hardMix, questionCount)
+        );
         this.questionCount = questionCount;
-        this.questionTypeJudger = questionTypeJudger;
-        this.cognitiveTypeCounts = CognitiveMix.parse(cognitiveMix, questionCount);
         this.weaknessQuestionCount = weaknessQuestionCount;
         this.weaknessCognitiveTypeCounts = CognitiveMix.parse(weaknessCognitiveMix, weaknessQuestionCount);
         this.askedQuestionLimit = askedQuestionLimit;
         this.weaknessQuestionsPerPage = weaknessQuestionsPerPage;
         this.eventPublisher = eventPublisher;
+        this.questionTypeJudger = questionTypeJudger;
     }
 
     // 트랜잭션은 QuizWriter 의 저장에만 있다. 수십 초 걸리는 AI 호출 동안 DB 연결을 잡아 두지 않으려는 것이다
@@ -121,7 +128,7 @@ public class QuizGenerationWorker {
                 job.format(),
                 job.difficulty(),
                 questionCount,
-                cognitiveTypeCounts,
+                cognitiveTypeCountsByDifficulty.get(job.difficulty()),
                 findExistingConcepts(job.materialId()));
 
         GeneratedQuiz validated = generateAndValidate(request);
