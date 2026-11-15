@@ -19,6 +19,7 @@ import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.core.io.ClassPathResource;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.function.Function;
 
@@ -66,8 +67,13 @@ class LlmQuestionTypeJudgeAdapterTest {
     }
 
     private static LlmQuestionTypeJudgeAdapter adapterWith(ChatModel chatModel) {
+        return adapterWith(chatModel, "");
+    }
+
+    private static LlmQuestionTypeJudgeAdapter adapterWith(ChatModel chatModel, String reasoningEffort) {
         return new LlmQuestionTypeJudgeAdapter(ChatClient.builder(chatModel),
-                new ClassPathResource("prompts/question-type-judge-system.md"), "judge-model", 3000);
+                new ClassPathResource("prompts/question-type-judge-system.md"), "judge-model", 3000,
+                Duration.ofSeconds(300), reasoningEffort);
     }
 
     @Test
@@ -88,6 +94,32 @@ class LlmQuestionTypeJudgeAdapterTest {
         assertThat(chatModel.received.getOptions()).isInstanceOfSatisfying(OpenAiChatOptions.class, options -> {
             assertThat(options.getModel()).isEqualTo("judge-model");
             assertThat(options.getMaxTokens()).isEqualTo(3000);
+            assertThat(options.getTimeout()).isEqualTo(Duration.ofSeconds(300));
+        });
+    }
+
+    @Test
+    void 추론을_켜지_않으면_온도_0_으로_보낸다() {
+        StubChatModel chatModel = new StubChatModel(prompt -> respond(VERDICTS_JSON));
+
+        adapterWith(chatModel).judge(QUESTIONS);
+
+        assertThat(chatModel.received.getOptions()).isInstanceOfSatisfying(OpenAiChatOptions.class, options -> {
+            assertThat(options.getReasoningEffort()).isNull();
+            assertThat(options.getTemperature()).isEqualTo(0.0);
+        });
+    }
+
+    // Claude 는 추론을 켜면 온도 1 만 받는다
+    @Test
+    void 추론을_켜면_수준과_온도_1_로_보낸다() {
+        StubChatModel chatModel = new StubChatModel(prompt -> respond(VERDICTS_JSON));
+
+        adapterWith(chatModel, "medium").judge(QUESTIONS);
+
+        assertThat(chatModel.received.getOptions()).isInstanceOfSatisfying(OpenAiChatOptions.class, options -> {
+            assertThat(options.getReasoningEffort()).isEqualTo("medium");
+            assertThat(options.getTemperature()).isEqualTo(1.0);
         });
     }
 

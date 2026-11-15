@@ -1,5 +1,6 @@
 package com.woozoo.quiz.infrastructure.validation;
 
+import com.openai.models.completions.CompletionUsage;
 import com.woozoo.quiz.quiz.port.JudgedQuestionType;
 import com.woozoo.quiz.quiz.port.QuestionToJudgeType;
 import com.woozoo.quiz.quiz.port.QuestionTypeJudgeException;
@@ -26,15 +27,27 @@ import java.util.List;
 public class LlmQuestionTypeJudgeAdapter implements QuestionTypeJudgePort {
 
     private final ChatClient chatClient;
+    private final String reasoningEffort;
 
     public LlmQuestionTypeJudgeAdapter(ChatClient.Builder clientBuilder,
                                        @Value("classpath:prompts/question-type-judge-system.md")
                                        Resource systemPrompt,
                                        @Value("${quiz.generation.judge-model}") String model,
-                                       @Value("${quiz.generation.judge-max-tokens}") int maxTokens) {
+                                       @Value("${quiz.generation.judge-max-tokens}") int maxTokens,
+                                       @Value("${spring.ai.openai.timeout}") Duration timeout,
+                                       @Value("${quiz.generation.judge-reasoning-effort:}") String reasoningEffort) {
+        this.reasoningEffort = reasoningEffort.isBlank() ? null : reasoningEffort.strip();
+        // 호출 옵션에는 Spring AI 기본값 60초의 타임아웃이 따로 붙어 클라이언트 설정보다 앞선다. 그래서 여기서 직접 정한다
+        OpenAiChatOptions.Builder options = OpenAiChatOptions.builder().model(model).maxTokens(maxTokens).timeout(timeout);
+        if (this.reasoningEffort == null) {
+            options.temperature(0.0);
+        } else {
+            // Claude 는 추론을 켜면 온도 1 만 받는다. 판정이 흔들리는 것은 추론으로 기준을 대조하는 쪽이 더 크게 줄인다고 본다
+            options.reasoningEffort(this.reasoningEffort).temperature(1.0);
+        }
         this.chatClient = clientBuilder
                 .defaultSystem(systemPrompt)
-                .defaultOptions(OpenAiChatOptions.builder().model(model).maxTokens(maxTokens).temperature(0.0))
+                .defaultOptions(options)
                 .defaultAdvisors(AdvisorParams.ENABLE_NATIVE_STRUCTURED_OUTPUT)
                 .build();
     }
@@ -61,10 +74,21 @@ public class LlmQuestionTypeJudgeAdapter implements QuestionTypeJudgePort {
         }
 
         Usage usage = result.response().getMetadata().getUsage();
-        log.info("LLM 유형 판정 완료: {}ms, 입력 토큰 {}, 출력 토큰 {}",
-                elapsedMs, usage.getPromptTokens(), usage.getCompletionTokens());
+        log.info("LLM 유형 판정 완료: {}ms, 입력 토큰 {}, 출력 토큰 {}, 추론 토큰 {}, 추론 수준 {}",
+                elapsedMs, usage.getPromptTokens(), usage.getCompletionTokens(), reasoningTokensOf(usage),
+                reasoningEffort == null ? "없음" : reasoningEffort);
 
         return result.entity().verdicts();
+    }
+
+    // 추론 토큰은 출력 토큰에 포함된다. 게이트웨이가 넘겨주지 않으면 null 로 찍힌다
+    private static Long reasoningTokensOf(Usage usage) {
+        if (usage.getNativeUsage() instanceof CompletionUsage completionUsage) {
+            return completionUsage.completionTokensDetails()
+                    .flatMap(CompletionUsage.CompletionTokensDetails::reasoningTokens)
+                    .orElse(null);
+        }
+        return null;
     }
 
     // JSON 스키마는 최상위가 객체여야 해서 목록을 감싼다
