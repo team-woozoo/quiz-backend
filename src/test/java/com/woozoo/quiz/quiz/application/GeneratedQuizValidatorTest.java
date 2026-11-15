@@ -3,6 +3,7 @@ package com.woozoo.quiz.quiz.application;
 import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
+import com.woozoo.quiz.quiz.domain.SourceScope;
 import com.woozoo.quiz.quiz.port.ConceptFocus;
 import com.woozoo.quiz.quiz.port.GeneratedConcept;
 import com.woozoo.quiz.quiz.port.GeneratedOption;
@@ -34,7 +35,7 @@ class GeneratedQuizValidatorTest {
     private final GeneratedQuizValidator validator = new GeneratedQuizValidator();
 
     private static QuizGenerationRequest request(QuizFormat format, int questionCount) {
-        return new QuizGenerationRequest(CHUNKS, format, Difficulty.NORMAL, questionCount, Map.of(), List.of());
+        return new QuizGenerationRequest(CHUNKS, format, Difficulty.NORMAL, questionCount, Map.of(), List.of(), SourceScope.GROUNDED);
     }
 
     private static List<GeneratedOption> oxOptions() {
@@ -274,7 +275,7 @@ class GeneratedQuizValidatorTest {
     }
 
     private static QuizGenerationRequest mixRequest(int questionCount, Map<CognitiveType, Integer> mix) {
-        return new QuizGenerationRequest(CHUNKS, QuizFormat.OX, Difficulty.NORMAL, questionCount, mix, List.of());
+        return new QuizGenerationRequest(CHUNKS, QuizFormat.OX, Difficulty.NORMAL, questionCount, mix, List.of(), SourceScope.GROUNDED);
     }
 
     // 개념 순서대로 자르면 자료 뒤쪽 개념의 평가 문제가 잘린다
@@ -350,7 +351,7 @@ class GeneratedQuizValidatorTest {
     @ExtendWith(OutputCaptureExtension.class)
     void 겨냥한_개념이_있으면_그_개념의_문제만_남긴다(CapturedOutput output) {
         QuizGenerationRequest focused = new QuizGenerationRequest(CHUNKS, QuizFormat.OX, Difficulty.NORMAL, 10,
-                Map.of(), List.of(), new ConceptFocus("TCP 연결", "설명", List.of()));
+                Map.of(), List.of(), new ConceptFocus("TCP 연결", "설명", List.of()), SourceScope.GROUNDED);
         GeneratedQuiz generated = new GeneratedQuiz(List.of(
                 concept("TCP 연결", List.of(1), validOx("이름 그대로")),
                 concept("tcp-연결!", List.of(1), validOx("기호만 다름")),
@@ -410,7 +411,7 @@ class GeneratedQuizValidatorTest {
                 .map(quote -> question(quote, quote, 3, oxOptions()))
                 .toArray(GeneratedQuestion[]::new);
         QuizGenerationRequest slideRequest =
-                new QuizGenerationRequest(List.of(SLIDE), QuizFormat.OX, Difficulty.NORMAL, 10, Map.of(), List.of());
+                new QuizGenerationRequest(List.of(SLIDE), QuizFormat.OX, Difficulty.NORMAL, 10, Map.of(), List.of(), SourceScope.GROUNDED);
         return contentsOf(validator.validate(slideRequest,
                 new GeneratedQuiz(List.of(concept("엑셀", List.of(3), questions)))));
     }
@@ -543,7 +544,7 @@ class GeneratedQuizValidatorTest {
     void 공백_없이_붙은_슬래시는_조각을_나누지_않는다() {
         SourceChunk path = new SourceChunk(4, "저장 경로는 C:/data/report.xlsx 이다");
         QuizGenerationRequest pathRequest =
-                new QuizGenerationRequest(List.of(path), QuizFormat.OX, Difficulty.NORMAL, 10, Map.of(), List.of());
+                new QuizGenerationRequest(List.of(path), QuizFormat.OX, Difficulty.NORMAL, 10, Map.of(), List.of(), SourceScope.GROUNDED);
         GeneratedQuestion pathQuote = question("경로", "C:/data/report.xlsx", 4, oxOptions());
 
         assertThat(contentsOf(validator.validate(pathRequest,

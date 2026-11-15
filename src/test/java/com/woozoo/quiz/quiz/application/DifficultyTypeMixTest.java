@@ -11,6 +11,7 @@ import com.woozoo.quiz.material.persistence.MaterialRepository;
 import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
+import com.woozoo.quiz.quiz.domain.SourceScope;
 import com.woozoo.quiz.quiz.port.QuizGenerationException;
 import com.woozoo.quiz.quiz.port.QuizGenerationPort;
 import com.woozoo.quiz.quiz.port.QuizGenerationRequest;
@@ -31,12 +32,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
-// 고른 난이도의 유형별 문제 수가 생성 요청에 담기는지 본다. 생성 결과는 보지 않아 생성기는 실패하게 둔다
+// 고른 난이도의 유형별 문제 수와 문제 종류가 생성 요청에 담기는지 본다. 생성 결과는 보지 않아 생성기는 실패하게 둔다
 @Import({TestcontainersConfiguration.class, SyncTaskExecutorConfiguration.class})
 @SpringBootTest(properties = {
         "quiz.generation.cognitive-mix.easy=REMEMBER:4,UNDERSTAND:3,APPLY:3",
         "quiz.generation.cognitive-mix.normal=REMEMBER:2,UNDERSTAND:2,APPLY:3,ANALYZE:2,EVALUATE:1",
-        "quiz.generation.cognitive-mix.hard=REMEMBER:1,UNDERSTAND:1,APPLY:2,ANALYZE:3,EVALUATE:3"
+        "quiz.generation.cognitive-mix.hard=APPLY:3,ANALYZE:4,EVALUATE:3",
+        "quiz.generation.extended.enabled=true"
 })
 @Transactional
 class DifficultyTypeMixTest {
@@ -62,12 +64,16 @@ class DifficultyTypeMixTest {
         given(quizGenerationPort.generateQuiz(any())).willThrow(new QuizGenerationException("확인만 한다"));
     }
 
-    private Map<CognitiveType, Integer> requestedMix(Difficulty difficulty) {
+    private QuizGenerationRequest sentRequest(Difficulty difficulty) {
         quizGenerationService.requestGeneration(
                 new GenerateQuizCommand(userId, materialId, QuizFormat.MULTIPLE_CHOICE, difficulty));
         ArgumentCaptor<QuizGenerationRequest> sent = ArgumentCaptor.forClass(QuizGenerationRequest.class);
         verify(quizGenerationPort).generateQuiz(sent.capture());
-        return sent.getValue().cognitiveTypeCounts();
+        return sent.getValue();
+    }
+
+    private Map<CognitiveType, Integer> requestedMix(Difficulty difficulty) {
+        return sentRequest(difficulty).cognitiveTypeCounts();
     }
 
     @Test
@@ -83,11 +89,25 @@ class DifficultyTypeMixTest {
                 CognitiveType.ANALYZE, 2, CognitiveType.EVALUATE, 1));
     }
 
-    // NORMAL 과 같은 값이면 HARD 가 NORMAL 비율을 잘못 가져와도 통과해서, 이 테스트에서는 다른 값을 준다
+    // 심화 문제에는 기억과 이해를 두지 않는다
     @Test
-    void HARD_는_HARD_의_비율을_요청한다() {
+    void HARD_는_적용_분석_평가만_요청한다() {
         assertThat(requestedMix(Difficulty.HARD)).containsExactlyInAnyOrderEntriesOf(Map.of(
-                CognitiveType.REMEMBER, 1, CognitiveType.UNDERSTAND, 1, CognitiveType.APPLY, 2,
-                CognitiveType.ANALYZE, 3, CognitiveType.EVALUATE, 3));
+                CognitiveType.APPLY, 3, CognitiveType.ANALYZE, 4, CognitiveType.EVALUATE, 3));
+    }
+
+    @Test
+    void EASY_는_근거_문제로_요청한다() {
+        assertThat(sentRequest(Difficulty.EASY).scope()).isEqualTo(SourceScope.GROUNDED);
+    }
+
+    @Test
+    void NORMAL_은_근거_문제로_요청한다() {
+        assertThat(sentRequest(Difficulty.NORMAL).scope()).isEqualTo(SourceScope.GROUNDED);
+    }
+
+    @Test
+    void HARD_는_심화_문제로_요청한다() {
+        assertThat(sentRequest(Difficulty.HARD).scope()).isEqualTo(SourceScope.EXTENDED);
     }
 }

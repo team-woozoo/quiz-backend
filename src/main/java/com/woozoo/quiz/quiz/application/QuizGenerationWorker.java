@@ -12,6 +12,7 @@ import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.GenerationJob;
 import com.woozoo.quiz.quiz.domain.QuizKind;
+import com.woozoo.quiz.quiz.domain.SourceScope;
 import com.woozoo.quiz.quiz.persistence.GenerationJobRepository;
 import com.woozoo.quiz.quiz.persistence.QuizRepository;
 import com.woozoo.quiz.quiz.port.ConceptFocus;
@@ -54,6 +55,7 @@ public class QuizGenerationWorker {
     private final int weaknessQuestionsPerPage;
     private final ApplicationEventPublisher eventPublisher;
     private final QuestionTypeJudger questionTypeJudger;
+    private final boolean extendedEnabled;
 
     public QuizGenerationWorker(GenerationJobRepository generationJobRepository,
                                 MaterialRepository materialRepository,
@@ -71,7 +73,8 @@ public class QuizGenerationWorker {
                                 @Value("${quiz.generation.weakness.cognitive-mix}") String weaknessCognitiveMix,
                                 @Value("${quiz.generation.weakness.asked-question-limit}") int askedQuestionLimit,
                                 @Value("${quiz.generation.weakness.questions-per-page}") int weaknessQuestionsPerPage,
-                                ApplicationEventPublisher eventPublisher, QuestionTypeJudger questionTypeJudger) {
+                                ApplicationEventPublisher eventPublisher, QuestionTypeJudger questionTypeJudger,
+                                @Value("${quiz.generation.extended.enabled}") boolean extendedEnabled) {
         this.generationJobRepository = generationJobRepository;
         this.materialRepository = materialRepository;
         this.materialConceptRepository = materialConceptRepository;
@@ -80,10 +83,11 @@ public class QuizGenerationWorker {
         this.quizGenerationPort = quizGenerationPort;
         this.generatedQuizValidator = generatedQuizValidator;
         this.quizWriter = quizWriter;
+        // HARD 비율은 심화 문제용이다. 심화를 끄면 HARD 도 근거 문제라 NORMAL 비율로 요청한다
         this.cognitiveTypeCountsByDifficulty = Map.of(
                 Difficulty.EASY, CognitiveMix.parse(easyMix, questionCount),
                 Difficulty.NORMAL, CognitiveMix.parse(normalMix, questionCount),
-                Difficulty.HARD, CognitiveMix.parse(hardMix, questionCount)
+                Difficulty.HARD, CognitiveMix.parse(extendedEnabled ? hardMix : normalMix, questionCount)
         );
         this.questionCount = questionCount;
         this.weaknessQuestionCount = weaknessQuestionCount;
@@ -92,6 +96,7 @@ public class QuizGenerationWorker {
         this.weaknessQuestionsPerPage = weaknessQuestionsPerPage;
         this.eventPublisher = eventPublisher;
         this.questionTypeJudger = questionTypeJudger;
+        this.extendedEnabled = extendedEnabled;
     }
 
     // 트랜잭션은 QuizWriter 의 저장에만 있다. 수십 초 걸리는 AI 호출 동안 DB 연결을 잡아 두지 않으려는 것이다
@@ -129,7 +134,10 @@ public class QuizGenerationWorker {
                 job.difficulty(),
                 questionCount,
                 cognitiveTypeCountsByDifficulty.get(job.difficulty()),
-                findExistingConcepts(job.materialId()));
+                findExistingConcepts(job.materialId()),
+                // 지금은 HARD 일반 퀴즈만 심화 문제로 낸다. 심화를 끄면 HARD 도 근거 문제로 낸다
+                job.difficulty() == Difficulty.HARD && extendedEnabled ? SourceScope.EXTENDED : SourceScope.GROUNDED
+        );
 
         GeneratedQuiz validated = generateAndValidate(request);
 
@@ -175,7 +183,10 @@ public class QuizGenerationWorker {
                 questionCount,
                 CognitiveMix.limitTo(weaknessCognitiveTypeCounts, questionCount),
                 List.of(),
-                new ConceptFocus(concept.name(), concept.description(), askedQuestions));
+                new ConceptFocus(concept.name(), concept.description(), askedQuestions),
+                // HARD 여도 근거 문제로 낸다. 심화 프롬프트는 개념 하나로만 내는 방식을 아직 받쳐 주지 않는다
+                SourceScope.GROUNDED
+        );
 
         GeneratedQuiz validated = generateAndValidate(request);
         quizWriter.saveWeakness(job, validated, chunkIdBySeq, materialConceptIdByChunkId);

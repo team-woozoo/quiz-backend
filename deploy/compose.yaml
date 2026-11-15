@@ -19,6 +19,10 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY 를 .env 에 설정해야 한다}
       # 하루 생성 횟수. 비우면 application.properties 의 기본값(15)을 쓴다
       QUIZ_GENERATION_DAILY_LIMIT: ${QUIZ_GENERATION_DAILY_LIMIT:-15}
+      # 유형 판정 모델과 추론 수준. 비우면 application-llm.properties 의 기본값을 쓴다
+      LLM_JUDGE_MODEL: ${LLM_JUDGE_MODEL:-bedrock-haiku}
+      LLM_JUDGE_REASONING_EFFORT: ${LLM_JUDGE_REASONING_EFFORT:-}
+      LLM_JUDGE_MAX_TOKENS: ${LLM_JUDGE_MAX_TOKENS:-3000}
     ports:
       - "8080:8080"
     mem_limit: 1g
