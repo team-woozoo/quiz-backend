@@ -20,6 +20,7 @@ import com.woozoo.quiz.quiz.domain.NewQuestion;
 import com.woozoo.quiz.quiz.domain.NewQuiz;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
 import com.woozoo.quiz.quiz.domain.QuizKind;
+import com.woozoo.quiz.quiz.domain.SourceScope;
 import com.woozoo.quiz.quiz.persistence.QuizRepository;
 import com.woozoo.quiz.quiz.port.GeneratedConcept;
 import com.woozoo.quiz.quiz.port.GeneratedOption;
@@ -119,8 +120,12 @@ class WeaknessQuizGenerationTest {
     }
 
     private GenerationJob requestWeakness(long conceptId) {
+        return requestWeakness(conceptId, Difficulty.NORMAL);
+    }
+
+    private GenerationJob requestWeakness(long conceptId, Difficulty difficulty) {
         long jobId = quizGenerationService.requestWeaknessGeneration(
-                new GenerateWeaknessQuizCommand(userId, conceptId, QuizFormat.OX, Difficulty.NORMAL));
+                new GenerateWeaknessQuizCommand(userId, conceptId, QuizFormat.OX, difficulty));
         return quizGenerationService.getJob(userId, jobId);
     }
 
@@ -149,6 +154,18 @@ class WeaknessQuizGenerationTest {
         assertThat(request.focus().name()).isEqualTo("TCP 연결 과정");
         assertThat(request.focus().description()).isEqualTo("연결을 맺고 끊는 과정");
         assertThat(request.focus().askedQuestions()).containsExactly("이미 낸 TCP 문제 2", "이미 낸 TCP 문제 1");
+    }
+
+    // 심화 프롬프트는 개념 하나로만 내는 방식을 아직 받쳐 주지 않는다
+    @Test
+    void HARD_약점_퀴즈도_근거_문제로_요청한다() {
+        generatorAnswersWithOtherConceptMixedIn();
+
+        requestWeakness(tcp, Difficulty.HARD);
+
+        ArgumentCaptor<QuizGenerationRequest> sent = ArgumentCaptor.forClass(QuizGenerationRequest.class);
+        verify(quizGenerationPort).generateQuiz(sent.capture());
+        assertThat(sent.getValue().scope()).isEqualTo(SourceScope.GROUNDED);
     }
 
     // UDP 특징은 3쪽 한 장에만 나와, 같은 사실을 돌려 쓰지 않게 문제를 덜 내고 높은 유형부터 뺀다

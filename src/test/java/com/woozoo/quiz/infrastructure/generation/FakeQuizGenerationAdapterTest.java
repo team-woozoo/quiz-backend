@@ -2,6 +2,7 @@ package com.woozoo.quiz.infrastructure.generation;
 
 import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
+import com.woozoo.quiz.quiz.domain.SourceScope;
 import com.woozoo.quiz.quiz.port.GeneratedConcept;
 import com.woozoo.quiz.quiz.port.GeneratedOption;
 import com.woozoo.quiz.quiz.port.GeneratedQuestion;
@@ -30,7 +31,7 @@ class FakeQuizGenerationAdapterTest {
     private final FakeQuizGenerationAdapter adapter = new FakeQuizGenerationAdapter(Duration.ZERO);
 
     private static QuizGenerationRequest request(QuizFormat format, int questionCount, List<SourceChunk> chunks) {
-        return new QuizGenerationRequest(chunks, format, Difficulty.NORMAL, questionCount, Map.of(), List.of());
+        return new QuizGenerationRequest(chunks, format, Difficulty.NORMAL, questionCount, Map.of(), List.of(), SourceScope.GROUNDED);
     }
 
     private static List<GeneratedQuestion> questionsOf(GeneratedQuiz quiz) {

@@ -3,6 +3,7 @@ package com.woozoo.quiz.infrastructure.generation;
 import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
+import com.woozoo.quiz.quiz.domain.SourceScope;
 import com.woozoo.quiz.quiz.port.GeneratedOption;
 import com.woozoo.quiz.quiz.port.GeneratedQuestion;
 import com.woozoo.quiz.quiz.port.GeneratedQuiz;
@@ -25,6 +26,7 @@ import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.core.io.ClassPathResource;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -36,9 +38,13 @@ import static org.assertj.core.api.Assertions.tuple;
 // 게이트웨이를 부르지 않고, 응답을 정해 둔 ChatModel 로 어댑터가 보내는 것과 받은 것을 다루는 방식을 본다
 class LlmQuizGenerationAdapterTest {
 
-    private static final QuizGenerationRequest REQUEST = new QuizGenerationRequest(
-            List.of(new SourceChunk(1, "TCP는 연결 지향 프로토콜이다.")),
-            QuizFormat.OX, Difficulty.NORMAL, 1, Map.of(), List.of());
+    private static final QuizGenerationRequest REQUEST = requestOf(SourceScope.GROUNDED);
+
+    private static QuizGenerationRequest requestOf(SourceScope scope) {
+        return new QuizGenerationRequest(
+                List.of(new SourceChunk(1, "TCP는 연결 지향 프로토콜이다.")),
+                QuizFormat.OX, Difficulty.NORMAL, 1, Map.of(), List.of(), scope);
+    }
 
     // 게이트웨이가 돌려주는 모양 그대로다. 필드 이름은 GeneratedQuiz 레코드에서 만든 스키마를 따른다
     private static final String QUIZ_JSON = """
@@ -88,8 +94,14 @@ class LlmQuizGenerationAdapterTest {
     }
 
     private static LlmQuizGenerationAdapter adapterWith(ChatModel chatModel) {
-        return new LlmQuizGenerationAdapter(
-                ChatClient.builder(chatModel), new ClassPathResource("prompts/quiz-generation-system.md"));
+        return adapterWith(chatModel, "");
+    }
+
+    private static LlmQuizGenerationAdapter adapterWith(ChatModel chatModel, String reasoningEffort) {
+        return new LlmQuizGenerationAdapter(ChatClient.builder(chatModel),
+                new ClassPathResource("prompts/quiz-generation-system.md"),
+                new ClassPathResource("prompts/quiz-extended-generation-system.md"),
+                reasoningEffort, Duration.ofSeconds(300));
     }
 
     @Test
@@ -120,6 +132,61 @@ class LlmQuizGenerationAdapterTest {
         assertThat(chatModel.received.getSystemMessage().getText()).contains("학습용 퀴즈를 만드는 출제자");
         assertThat(chatModel.received.getUserMessage().getText())
                 .isEqualTo(QuizGenerationUserMessage.from(REQUEST));
+    }
+
+    @Test
+    void 근거_문제는_근거_문제_프롬프트로_보낸다() {
+        StubChatModel chatModel = new StubChatModel(prompt -> respond(QUIZ_JSON));
+
+        adapterWith(chatModel).generateQuiz(requestOf(SourceScope.GROUNDED));
+
+        assertThat(chatModel.received.getSystemMessage().getText())
+                .contains("학습용 퀴즈를 만드는 출제자")
+                .doesNotContain("심화 문제를 만드는 출제자");
+    }
+
+    // 난이도가 아니라 요청의 문제 종류로 고른다. 어떤 종류로 낼지는 애플리케이션이 정한다
+    @Test
+    void 심화_문제는_심화_문제_프롬프트로_보낸다() {
+        StubChatModel chatModel = new StubChatModel(prompt -> respond(QUIZ_JSON));
+
+        adapterWith(chatModel).generateQuiz(requestOf(SourceScope.EXTENDED));
+
+        assertThat(chatModel.received.getSystemMessage().getText())
+                .contains("심화 문제를 만드는 출제자")
+                .doesNotContain("학습용 퀴즈를 만드는 출제자");
+    }
+
+    // 정하지 않으면 Spring AI 가 호출마다 60초를 붙여, 설정한 타임아웃이 먹지 않는다
+    @Test
+    void 설정한_타임아웃을_호출_옵션에_담는다() {
+        StubChatModel chatModel = new StubChatModel(prompt -> respond(QUIZ_JSON));
+
+        adapterWith(chatModel).generateQuiz(REQUEST);
+
+        assertThat(chatModel.received.getOptions()).isInstanceOfSatisfying(OpenAiChatOptions.class,
+                options -> assertThat(options.getTimeout()).isEqualTo(Duration.ofSeconds(300)));
+    }
+
+    @Test
+    void 추론_수준을_정하면_생성_요청에_담는다() {
+        StubChatModel chatModel = new StubChatModel(prompt -> respond(QUIZ_JSON));
+
+        adapterWith(chatModel, "high").generateQuiz(REQUEST);
+
+        assertThat(chatModel.received.getOptions()).isInstanceOfSatisfying(OpenAiChatOptions.class,
+                options -> assertThat(options.getReasoningEffort()).isEqualTo("high"));
+    }
+
+    // 비워 두면 게이트웨이의 기본값을 쓴다
+    @Test
+    void 추론_수준을_비워_두면_보내지_않는다() {
+        StubChatModel chatModel = new StubChatModel(prompt -> respond(QUIZ_JSON));
+
+        adapterWith(chatModel, "").generateQuiz(REQUEST);
+
+        assertThat(chatModel.received.getOptions()).isInstanceOfSatisfying(OpenAiChatOptions.class,
+                options -> assertThat(options.getReasoningEffort()).isNull());
     }
 
     // 프롬프트에 형식을 부탁하는 대신 response_format 의 JSON 스키마로 강제한다. 스키마의 필드 이름이 응답을 읽는 이름과 같아야 한다
