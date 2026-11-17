@@ -12,7 +12,7 @@
 ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat&logo=githubactions&logoColor=white)
 
 > **이 레포는 백엔드다.** 앱(Flutter)은 별도 레포에서 팀원이 맡는다.
-> AI 는 학교 LLM 게이트웨이(OpenAI 호환 API, 뒤에서는 Amazon Bedrock)로 부르고, 기본 모델은 `bedrock-gpt-5.6-luna` 다.
+> AI 는 학교 LLM 게이트웨이(OpenAI 호환 API, 뒤에서는 Amazon Bedrock)로 부르고, 기본 모델은 `bedrock-gpt-6-luna` 다.
 
 ---
 
