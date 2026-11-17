@@ -17,12 +17,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 을 .env 에 설정해야 한다}
       LLM_BASE_URL: ${LLM_BASE_URL:?LLM_BASE_URL 을 .env 에 설정해야 한다}
       LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY 를 .env 에 설정해야 한다}
-      # 하루 생성 횟수. 비우면 application.properties 의 기본값(15)을 쓴다
-      QUIZ_GENERATION_DAILY_LIMIT: ${QUIZ_GENERATION_DAILY_LIMIT:-15}
-      # 유형 판정 모델과 추론 수준. 비우면 application-llm.properties 의 기본값을 쓴다
-      LLM_JUDGE_MODEL: ${LLM_JUDGE_MODEL:-bedrock-haiku}
-      LLM_JUDGE_REASONING_EFFORT: ${LLM_JUDGE_REASONING_EFFORT:-}
-      LLM_JUDGE_MAX_TOKENS: ${LLM_JUDGE_MAX_TOKENS:-3000}
+      # 모델, 출력 상한, 일일 한도 같은 조정 값은 여기서 넘기지 않는다. application-*.properties 의 값을 따르므로
+      # 코드를 고쳐 배포하면 바뀐다. 운영에서만 다른 값은 application-prod.properties 에 둔다
     ports:
       - "8080:8080"
     mem_limit: 1g
