@@ -100,11 +100,12 @@ public class GenerationJobRepository {
                 .optional();
     }
 
+    // 하루 한도에 쓰는 수다. 실패한 작업은 사용자가 퀴즈를 받지 못했으니 빼고, 진행 중인 작업은 센다
     public long countByUserIdSince(long userId, Instant since) {
         return jdbcClient.sql("""
                 SELECT COUNT(*)
                 FROM generation_job
-                WHERE user_id = :userId AND created_at >= :since
+                WHERE user_id = :userId AND created_at >= :since AND status <> 'FAILED'
                 """)
                 .param("userId", userId)
                 // Postgres 드라이버가 Instant 의 SQL 타입을 추론하지 못해 OffsetDateTime 으로 바꿔 넘긴다

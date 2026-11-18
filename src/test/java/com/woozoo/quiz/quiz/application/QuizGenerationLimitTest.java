@@ -123,12 +123,15 @@ class QuizGenerationLimitTest {
         assertThat(countJobs()).isEqualTo(dailyLimit);
     }
 
-    // 실패한 작업도 AI 를 이미 불렀을 수 있어 한도에 센다
+    // 퀴즈를 받지 못한 요청이라 한도에 세지 않는다. 잘린 응답처럼 사용자 탓이 아닌 실패가 많다
     @Test
-    void 실패한_작업도_한도에_센다() {
-        insertJobs(dailyLimit, "FAILED", KST_MIDNIGHT);
+    void 실패한_작업은_한도에_세지_않는다() {
+        insertJobs(dailyLimit - 1, "DONE", KST_MIDNIGHT);
+        insertJobs(3, "FAILED", KST_MIDNIGHT);
 
-        assertRejectedWith(ErrorCode.DAILY_GENERATION_LIMIT_EXCEEDED);
+        long jobId = request();
+
+        assertThat(quizGenerationService.getJob(userId, jobId).status()).isEqualTo(GenerationStatus.DONE);
     }
 
     @Test
