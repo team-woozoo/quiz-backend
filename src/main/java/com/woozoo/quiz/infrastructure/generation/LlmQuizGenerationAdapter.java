@@ -30,6 +30,7 @@ public class LlmQuizGenerationAdapter implements QuizGenerationPort {
     private final Resource groundedPrompt;
     private final Resource extendedPrompt;
     private final String reasoningEffort;
+    private final int maxTokens;
 
     public LlmQuizGenerationAdapter(ChatClient.Builder clientBuilder,
                                     @Value("classpath:prompts/quiz-generation-system.md")
@@ -39,7 +40,9 @@ public class LlmQuizGenerationAdapter implements QuizGenerationPort {
                                     @Value("${quiz.generation.reasoning-effort:}")
                                     String reasoningEffort,
                                     @Value("${spring.ai.openai.timeout}")
-                                    Duration timeout) {
+                                    Duration timeout,
+                                    @Value("${spring.ai.openai.chat.max-tokens}")
+                                    int maxTokens) {
         this.groundedPrompt = groundedPrompt;
         this.extendedPrompt = extendedPrompt;
         this.reasoningEffort = reasoningEffort.isBlank() ? null : reasoningEffort.strip();
@@ -54,6 +57,7 @@ public class LlmQuizGenerationAdapter implements QuizGenerationPort {
                 .defaultOptions(options)
                 .defaultAdvisors(AdvisorParams.ENABLE_NATIVE_STRUCTURED_OUTPUT)
                 .build();
+        this.maxTokens = maxTokens;
     }
 
     @Override
@@ -77,21 +81,31 @@ public class LlmQuizGenerationAdapter implements QuizGenerationPort {
         }
         long elapsedMs = Duration.ofNanos(System.nanoTime() - startTime).toMillis();
 
+        GeneratedQuiz quiz = result.entity();
         Usage usage = result.response().getMetadata().getUsage();
 
-        // 추론에 출력 상한을 다 쓰면 내용 없이 끝난다(finish_reason=length). 그 경우를 가르려고 사용량을 남긴다
-        if (result.entity() == null) {
-            log.warn("LLM 응답을 해석하지 못했다({}): {}ms, 끝난 이유 {}, 입력 토큰 {}, 출력 토큰 {}, 추론 토큰 {}, 추론 수준 {}",
-                    request.scope(), elapsedMs, finishReasonOf(result.response()), usage.getPromptTokens(),
-                    usage.getCompletionTokens(), reasoningTokensOf(usage), effortLabel());
-            throw new QuizGenerationException("LLM 응답이 비었거나 형식에 맞지 않는다");
+        int outputTokens = usage.getCompletionTokens();
+        boolean noContent = quiz == null || quiz.concepts() == null || quiz.concepts().isEmpty();
+        boolean hitLimit = outputTokens >= maxTokens;
+
+        // 잘린 응답은 모델마다 다르게 온다. luna 는 빈 문자열이나 끊긴 JSON 에 finish_reason=length 를 주지만,
+        // Claude 는 게이트웨이가 구조화 출력을 도구 호출로 바꿔 처리해서 잘려도 {} 와 stop 이 온다.
+        // 그래서 끝난 이유가 아니라 내용과 출력 토큰으로 판단한다. 출력이 상한에 닿았으면 내용이 있어도 끝까지
+        // 썼는지 알 수 없어 버린다. 사용량이 오지 않으면 Spring AI 가 0 으로 채워 상한 검사는 지나간다.
+        // 실패 원인을 가르려고 끝난 이유와 사용량을 로그에 남긴다
+        if (noContent || hitLimit) {
+            log.warn("LLM 응답을 쓸 수 없다({}, {}): {}ms, 끝난 이유 {}, 입력 토큰 {}, 출력 토큰 {}/{}, 추론 토큰 {}, 추론 수준 {}",
+                    request.scope(), noContent ? "내용 없음" : "출력 상한 도달", elapsedMs,
+                    finishReasonOf(result.response()), usage.getPromptTokens(),
+                    outputTokens, maxTokens, reasoningTokensOf(usage), effortLabel());
+            throw new QuizGenerationException("LLM 응답을 쓸 수 없다");
         }
 
         log.info("LLM 생성 완료({}): {}ms, 입력 토큰 {}, 출력 토큰 {}, 추론 토큰 {}, 추론 수준 {}",
-                request.scope(), elapsedMs, usage.getPromptTokens(), usage.getCompletionTokens(),
+                request.scope(), elapsedMs, usage.getPromptTokens(), outputTokens,
                 reasoningTokensOf(usage), effortLabel());
 
-        return result.entity();
+        return quiz;
     }
 
     private String effortLabel() {

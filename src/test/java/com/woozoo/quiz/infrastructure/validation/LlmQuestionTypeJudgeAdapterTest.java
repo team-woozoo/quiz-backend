@@ -60,10 +60,16 @@ class LlmQuestionTypeJudgeAdapterTest {
         }
     }
 
+    private static final int MAX_TOKENS = 3000;
+
     private static ChatResponse respond(String text) {
+        return respond(text, 50);
+    }
+
+    private static ChatResponse respond(String text, int outputTokens) {
         return new ChatResponse(
                 List.of(new Generation(new AssistantMessage(text))),
-                ChatResponseMetadata.builder().usage(new DefaultUsage(100, 50)).build());
+                ChatResponseMetadata.builder().usage(new DefaultUsage(100, outputTokens)).build());
     }
 
     private static LlmQuestionTypeJudgeAdapter adapterWith(ChatModel chatModel) {
@@ -72,7 +78,7 @@ class LlmQuestionTypeJudgeAdapterTest {
 
     private static LlmQuestionTypeJudgeAdapter adapterWith(ChatModel chatModel, String reasoningEffort) {
         return new LlmQuestionTypeJudgeAdapter(ChatClient.builder(chatModel),
-                new ClassPathResource("prompts/question-type-judge-system.md"), "judge-model", 3000,
+                new ClassPathResource("prompts/question-type-judge-system.md"), "judge-model", MAX_TOKENS,
                 Duration.ofSeconds(300), reasoningEffort);
     }
 
@@ -93,7 +99,7 @@ class LlmQuestionTypeJudgeAdapterTest {
 
         assertThat(chatModel.received.getOptions()).isInstanceOfSatisfying(OpenAiChatOptions.class, options -> {
             assertThat(options.getModel()).isEqualTo("judge-model");
-            assertThat(options.getMaxTokens()).isEqualTo(3000);
+            assertThat(options.getMaxTokens()).isEqualTo(MAX_TOKENS);
             assertThat(options.getTimeout()).isEqualTo(Duration.ofSeconds(300));
         });
     }
@@ -183,7 +189,7 @@ class LlmQuestionTypeJudgeAdapterTest {
                 .hasRootCause(failure);
     }
 
-    // max_tokens 에 걸려 잘린 응답이 이렇게 온다
+    // luna 가 max_tokens 에 걸려 잘리면 이렇게 온다
     @Test
     void JSON_이_깨져_있으면_QuestionTypeJudgeException_이다() {
         String cutOff = VERDICTS_JSON.substring(0, VERDICTS_JSON.length() / 2);
@@ -199,10 +205,47 @@ class LlmQuestionTypeJudgeAdapterTest {
         assertThatThrownBy(() -> adapter.judge(QUESTIONS)).isInstanceOf(QuestionTypeJudgeException.class);
     }
 
+    // 보낸 문제보다 판정이 적은 경우라 판정 수 검사에서 걸린다
     @Test
     void 판정이_하나도_없으면_QuestionTypeJudgeException_이다() {
         LlmQuestionTypeJudgeAdapter adapter = adapterWith(new StubChatModel(prompt -> respond("{\"verdicts\": []}")));
 
         assertThatThrownBy(() -> adapter.judge(QUESTIONS)).isInstanceOf(QuestionTypeJudgeException.class);
+    }
+
+    // Claude 가 max_tokens 에 걸리면 게이트웨이가 빈 객체를 정상 응답처럼 돌려준다
+    @Test
+    void 빈_객체가_오면_QuestionTypeJudgeException_이다() {
+        LlmQuestionTypeJudgeAdapter adapter = adapterWith(new StubChatModel(prompt -> respond("{}")));
+
+        assertThatThrownBy(() -> adapter.judge(QUESTIONS)).isInstanceOf(QuestionTypeJudgeException.class);
+    }
+
+    // 판정이 없는 문제가 불일치로 떨어지지 않게, 판정 실패로 다룬다
+    @Test
+    void 보낸_문제보다_판정이_적으면_QuestionTypeJudgeException_이다() {
+        List<QuestionToJudgeType> twoQuestions = List.of(QUESTIONS.getFirst(),
+                new QuestionToJudgeType(4, "UDP 의 특징은?", "UDP는 비연결형 프로토콜이다.", "자료에 그대로 나온다.",
+                        List.of(new GeneratedOption("비연결형", true), new GeneratedOption("연결 지향", false)),
+                        "UDP는 비연결형 프로토콜이다."));
+        LlmQuestionTypeJudgeAdapter adapter = adapterWith(new StubChatModel(prompt -> respond(VERDICTS_JSON)));
+
+        assertThatThrownBy(() -> adapter.judge(twoQuestions)).isInstanceOf(QuestionTypeJudgeException.class);
+    }
+
+    // 끝난 이유는 모델마다 믿을 수 없어, 출력 토큰이 상한에 닿았으면 판정이 온전해 보여도 버린다
+    @Test
+    void 출력이_상한에_닿으면_판정이_있어도_QuestionTypeJudgeException_이다() {
+        LlmQuestionTypeJudgeAdapter adapter = adapterWith(new StubChatModel(prompt -> respond(VERDICTS_JSON, MAX_TOKENS)));
+
+        assertThatThrownBy(() -> adapter.judge(QUESTIONS)).isInstanceOf(QuestionTypeJudgeException.class);
+    }
+
+    @Test
+    void 출력이_상한보다_적으면_판정을_그대로_쓴다() {
+        List<JudgedQuestionType> judged = adapterWith(new StubChatModel(prompt -> respond(VERDICTS_JSON, MAX_TOKENS - 1)))
+                .judge(QUESTIONS);
+
+        assertThat(judged).hasSize(1);
     }
 }

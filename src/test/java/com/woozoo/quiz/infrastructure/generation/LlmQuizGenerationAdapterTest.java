@@ -87,10 +87,16 @@ class LlmQuizGenerationAdapterTest {
         }
     }
 
+    private static final int MAX_TOKENS = 1000;
+
     private static ChatResponse respond(String text) {
+        return respond(text, 50);
+    }
+
+    private static ChatResponse respond(String text, int outputTokens) {
         return new ChatResponse(
                 List.of(new Generation(new AssistantMessage(text))),
-                ChatResponseMetadata.builder().usage(new DefaultUsage(100, 50)).build());
+                ChatResponseMetadata.builder().usage(new DefaultUsage(100, outputTokens)).build());
     }
 
     private static LlmQuizGenerationAdapter adapterWith(ChatModel chatModel) {
@@ -101,7 +107,7 @@ class LlmQuizGenerationAdapterTest {
         return new LlmQuizGenerationAdapter(ChatClient.builder(chatModel),
                 new ClassPathResource("prompts/quiz-generation-system.md"),
                 new ClassPathResource("prompts/quiz-extended-generation-system.md"),
-                reasoningEffort, Duration.ofSeconds(300));
+                reasoningEffort, Duration.ofSeconds(300), MAX_TOKENS);
     }
 
     @Test
@@ -216,7 +222,7 @@ class LlmQuizGenerationAdapterTest {
                 .hasRootCause(failure);
     }
 
-    // max_tokens 에 걸려 잘린 응답이 이렇게 온다
+    // luna 가 답을 쓰다 max_tokens 에 걸리면 이렇게 온다
     @Test
     void JSON_이_깨져_있으면_QuizGenerationException_이다() {
         String cutOff = QUIZ_JSON.substring(0, QUIZ_JSON.length() / 2);
@@ -225,10 +231,42 @@ class LlmQuizGenerationAdapterTest {
         assertThatThrownBy(() -> adapter.generateQuiz(REQUEST)).isInstanceOf(QuizGenerationException.class);
     }
 
+    // luna 가 추론에 출력 상한을 다 쓰면 이렇게 온다
     @Test
     void 응답이_비어_있으면_QuizGenerationException_이다() {
         LlmQuizGenerationAdapter adapter = adapterWith(new StubChatModel(prompt -> respond("")));
 
         assertThatThrownBy(() -> adapter.generateQuiz(REQUEST)).isInstanceOf(QuizGenerationException.class);
+    }
+
+    // Claude 가 max_tokens 에 걸리면 게이트웨이가 빈 객체를 정상 응답처럼 돌려준다. 파싱은 되지만 쓸 내용이 없다
+    @Test
+    void 빈_객체가_오면_QuizGenerationException_이다() {
+        LlmQuizGenerationAdapter adapter = adapterWith(new StubChatModel(prompt -> respond("{}")));
+
+        assertThatThrownBy(() -> adapter.generateQuiz(REQUEST)).isInstanceOf(QuizGenerationException.class);
+    }
+
+    @Test
+    void 개념_목록이_비어_있으면_QuizGenerationException_이다() {
+        LlmQuizGenerationAdapter adapter = adapterWith(new StubChatModel(prompt -> respond("{\"concepts\": []}")));
+
+        assertThatThrownBy(() -> adapter.generateQuiz(REQUEST)).isInstanceOf(QuizGenerationException.class);
+    }
+
+    // 끝난 이유는 모델마다 믿을 수 없어, 출력 토큰이 상한에 닿았으면 내용이 온전해 보여도 버린다
+    @Test
+    void 출력이_상한에_닿으면_내용이_있어도_QuizGenerationException_이다() {
+        LlmQuizGenerationAdapter adapter = adapterWith(new StubChatModel(prompt -> respond(QUIZ_JSON, MAX_TOKENS)));
+
+        assertThatThrownBy(() -> adapter.generateQuiz(REQUEST)).isInstanceOf(QuizGenerationException.class);
+    }
+
+    @Test
+    void 출력이_상한보다_적으면_그대로_쓴다() {
+        GeneratedQuiz quiz = adapterWith(new StubChatModel(prompt -> respond(QUIZ_JSON, MAX_TOKENS - 1)))
+                .generateQuiz(REQUEST);
+
+        assertThat(quiz.concepts()).hasSize(1);
     }
 }

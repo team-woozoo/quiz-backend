@@ -251,19 +251,35 @@ class GenerationJobRepositoryTest {
         assertThat(find(jobId).status()).isEqualTo(GenerationStatus.PENDING);
     }
 
+    private void finish(long jobId) {
+        generationJobRepository.markProcessing(jobId);
+        generationJobRepository.markDone(jobId, insertQuiz());
+    }
+
     @Test
     void 기준_시각_이후에_만든_내_작업만_센다() {
         long oldJobId = createJob();
-        generationJobRepository.markFailed(oldJobId, ErrorCode.GENERATION_FAILED);
+        finish(oldJobId);
         moveCreatedAt(oldJobId, Duration.ofDays(2));
-        long recentJobId = createJob();
-        generationJobRepository.markFailed(recentJobId, ErrorCode.GENERATION_FAILED);
+        finish(createJob());
         createJob();
         createJobOfNewUser("other@test.com");
 
         long count = generationJobRepository.countByUserIdSince(userId, Instant.now().minus(Duration.ofDays(1)));
 
-        // 이틀 전 작업과 남의 작업은 빼고, 실패한 작업과 진행 중인 작업은 센다
+        // 이틀 전 작업과 남의 작업은 빼고, 끝난 작업과 진행 중인 작업은 센다
         assertThat(count).isEqualTo(2);
+    }
+
+    // 실패는 사용자가 퀴즈를 받지 못한 것이라 하루 한도에서 빼 준다
+    @Test
+    void 실패한_작업은_세지_않는다() {
+        generationJobRepository.markFailed(createJob(), ErrorCode.GENERATION_FAILED);
+        generationJobRepository.markFailed(createJob(), ErrorCode.NO_VALID_QUESTIONS);
+        createJob();
+
+        long count = generationJobRepository.countByUserIdSince(userId, Instant.now().minus(Duration.ofDays(1)));
+
+        assertThat(count).isEqualTo(1);
     }
 }
