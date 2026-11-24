@@ -21,7 +21,8 @@ public record MaterialConceptResponse(
         Double accuracy,
         @Schema(description = """
                 WEAK: 정답률이 기준보다 낮다, GOOD: 기준 이상이지만 다 맞히지 못했다,
-                PERFECT: 모두 맞혔다, UNCHECKED: 하나도 풀지 않았다""")
+                PERFECT: 모두 맞혔다, UNCHECKED: 하나도 풀지 않았다.
+                개념은 업로드할 때 미리 만들어져, 아직 문제가 없는 개념도 UNCHECKED 로 온다. questionCount 가 0 인지로 구분한다""")
         ConceptStatus status) {
 
     public static MaterialConceptResponse from(MaterialConceptScore score) {

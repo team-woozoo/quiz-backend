@@ -1,5 +1,6 @@
 package com.woozoo.quiz.concept.persistence;
 
+import com.woozoo.quiz.concept.domain.ConceptTag;
 import com.woozoo.quiz.concept.domain.MaterialConcept;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -26,6 +27,21 @@ public class MaterialConceptRepository {
                 .param("materialId", materialId)
                 .query(MaterialConcept.class)
                 .list();
+    }
+
+    // 업로드 분석으로 나온 개념을 넣는다. 이름은 서비스가 이미 겹치지 않게 정리했다
+    public long save(long materialId, String name, String description, List<ConceptTag> tags) {
+        return jdbcClient.sql("""
+                    INSERT INTO material_concept (material_id, name, description, tags)
+                    VALUES (:materialId, :name, :description, :tags)
+                    RETURNING id
+                    """)
+                .param("materialId", materialId)
+                .param("name", name)
+                .param("description", description)
+                .param("tags", tags.stream().map(Enum::name).toArray(String[]::new))
+                .query(Long.class)
+                .single();
     }
 
     // AI 가 기존 개념 이름을 그대로 쓰는 것이 의도한 동작이라, 이름이 있으면 새로 만들지 않고 그 id 를 돌려준다.

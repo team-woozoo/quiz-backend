@@ -11,12 +11,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 @Import(TestcontainersConfiguration.class)
@@ -45,12 +47,12 @@ class MaterialRepositoryTest {
     @Test
     void 자료를_저장하고_그_아이디로_조회한다(){
         NewMaterial newMaterial =
-                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30);
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null);
 
         long id = materialRepository.save(newMaterial);
 
         NewMaterial result = jdbcClient.sql("""
-                SELECT owner_id, title, original_filename, file_type, total_page_count
+                SELECT owner_id, title, original_filename, file_type, total_page_count, content_hash
                 FROM material
                 WHERE id = :id
                 """)
@@ -64,7 +66,7 @@ class MaterialRepositoryTest {
     @Test
     void 청크가_순서대로_저장된다(){
         long materialId = materialRepository.save(
-                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30));
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null));
 
         List<MaterialChunk> chunks = List.of(
                 new MaterialChunk(1,1,"first page"),
@@ -89,9 +91,9 @@ class MaterialRepositoryTest {
     @Test
     void 자료의_청크를_아이디와_함께_seq_순서로_조회한다() {
         long materialId = materialRepository.save(
-                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30));
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null));
         long otherMaterialId = materialRepository.save(
-                new NewMaterial(ownerId, "운영체제 6강", "06.pdf", FileType.PDF, 30));
+                new NewMaterial(ownerId, "운영체제 6강", "06.pdf", FileType.PDF, 30, null));
 
         // 저장 순서와 seq 순서를 다르게 넣어 ORDER BY 를 확인한다
         materialRepository.saveChunks(materialId, List.of(
@@ -110,7 +112,7 @@ class MaterialRepositoryTest {
     @Test
     void 주인일_때만_자료가_있다고_답한다() {
         long materialId = materialRepository.save(
-                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30));
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null));
 
         assertThat(materialRepository.existsByIdAndOwnerId(materialId, ownerId)).isTrue();
         assertThat(materialRepository.existsByIdAndOwnerId(materialId, ownerId + 1)).isFalse();
@@ -119,8 +121,8 @@ class MaterialRepositoryTest {
 
     @Test
     void 내_자료를_최근_것부터_페이지_수와_함께_조회한다() {
-        long older = materialRepository.save(new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30));
-        long newer = materialRepository.save(new NewMaterial(ownerId, "운영체제 6강", "06.pdf", FileType.PDF, 30));
+        long older = materialRepository.save(new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null));
+        long newer = materialRepository.save(new NewMaterial(ownerId, "운영체제 6강", "06.pdf", FileType.PDF, 30, null));
         materialRepository.saveChunks(older, List.of(
                 new MaterialChunk(1, 1, "first page"),
                 new MaterialChunk(2, 2, "second page")));
@@ -131,7 +133,7 @@ class MaterialRepositoryTest {
                 """)
                 .query(Long.class)
                 .single();
-        materialRepository.save(new NewMaterial(otherOwnerId, "남의 자료", "other.pdf", FileType.PDF, 30));
+        materialRepository.save(new NewMaterial(otherOwnerId, "남의 자료", "other.pdf", FileType.PDF, 30, null));
 
         List<MaterialSummary> result = materialRepository.findSummariesByOwnerId(ownerId);
 
@@ -141,9 +143,50 @@ class MaterialRepositoryTest {
     }
 
     @Test
+    void 파일_해시를_함께_저장한다() {
+        long id = materialRepository.save(
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, "a".repeat(64)));
+
+        String hash = jdbcClient.sql("SELECT content_hash FROM material WHERE id = :id")
+                .param("id", id)
+                .query(String.class)
+                .single();
+        assertThat(hash).isEqualTo("a".repeat(64));
+    }
+
+    @Test
+    void 같은_사용자가_같은_해시의_자료를_올렸는지_답한다() {
+        materialRepository.save(new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, "a".repeat(64)));
+
+        assertThat(materialRepository.existsByOwnerIdAndContentHash(ownerId, "a".repeat(64))).isTrue();
+        assertThat(materialRepository.existsByOwnerIdAndContentHash(ownerId, "b".repeat(64))).isFalse();
+        assertThat(materialRepository.existsByOwnerIdAndContentHash(ownerId + 1, "a".repeat(64))).isFalse();
+    }
+
+    // 동시에 같은 파일을 올리면 사전 검사를 둘 다 지나, 마지막 방어선은 유일 인덱스다
+    @Test
+    void 같은_사용자가_같은_해시의_자료를_두_번_저장할_수_없다() {
+        materialRepository.save(new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, "a".repeat(64)));
+
+        assertThatThrownBy(() -> materialRepository.save(
+                        new NewMaterial(ownerId, "다른 제목", "other.pdf", FileType.PDF, 30, "a".repeat(64))))
+                .isInstanceOf(DuplicateKeyException.class)
+                .hasMessageContaining("uq_material_owner_id_content_hash");
+    }
+
+    // 해시가 없는 예전 자료끼리는 겹쳐도 된다
+    @Test
+    void 해시가_없는_자료는_여러_개_저장할_수_있다() {
+        materialRepository.save(new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null));
+        materialRepository.save(new NewMaterial(ownerId, "운영체제 6강", "06.pdf", FileType.PDF, 30, null));
+
+        assertThat(materialRepository.findSummariesByOwnerId(ownerId)).hasSize(2);
+    }
+
+    @Test
     void 청크가_없는_자료는_빈_목록을_돌려준다() {
         long materialId = materialRepository.save(
-                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30));
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null));
 
         assertThat(materialRepository.findChunks(materialId)).isEmpty();
     }

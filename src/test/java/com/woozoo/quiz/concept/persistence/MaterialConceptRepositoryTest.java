@@ -3,6 +3,7 @@ package com.woozoo.quiz.concept.persistence;
 import com.woozoo.quiz.TestcontainersConfiguration;
 import com.woozoo.quiz.auth.domain.NewUser;
 import com.woozoo.quiz.auth.persistence.UserRepository;
+import com.woozoo.quiz.concept.domain.ConceptTag;
 import com.woozoo.quiz.concept.domain.MaterialConcept;
 import com.woozoo.quiz.material.domain.FileType;
 import com.woozoo.quiz.material.domain.MaterialChunk;
@@ -41,8 +42,8 @@ class MaterialConceptRepositoryTest {
     @BeforeEach
     void setup() {
         long userId = userRepository.save(new NewUser("concept@test.com", "1234", "홍길동"));
-        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30));
-        otherMaterialId = materialRepository.save(new NewMaterial(userId, "네트워크 6강", "06.pdf", FileType.PDF, 30));
+        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30, null));
+        otherMaterialId = materialRepository.save(new NewMaterial(userId, "네트워크 6강", "06.pdf", FileType.PDF, 30, null));
     }
 
     // 개념 저장은 퀴즈 저장 단계에서 만들어서, 지금은 직접 넣는다
@@ -71,6 +72,33 @@ class MaterialConceptRepositoryTest {
                 .containsExactly(
                         tuple(tcpId, "TCP 연결", "연결 지향 전송"),
                         tuple(udpId, "UDP", "비연결형 전송"));
+    }
+
+    @Test
+    void 분석한_개념을_태그와_함께_저장한다() {
+        long id = materialConceptRepository.save(materialId, "TCP 연결", "연결 지향 전송",
+                List.of(ConceptTag.CONTRAST, ConceptTag.RULE));
+
+        String saved = jdbcClient.sql("""
+                        SELECT name || ':' || description || ':' || array_to_string(tags, ',')
+                        FROM material_concept WHERE id = :id
+                        """)
+                .param("id", id)
+                .query(String.class)
+                .single();
+        assertThat(saved).isEqualTo("TCP 연결:연결 지향 전송:CONTRAST,RULE");
+    }
+
+    // 빈 배열은 분석했지만 재료가 없다는 뜻이라, 분석 전 개념의 NULL 과 구분돼야 한다
+    @Test
+    void 태그가_없으면_빈_배열로_저장한다() {
+        long id = materialConceptRepository.save(materialId, "TCP 연결", "연결 지향 전송", List.of());
+
+        Integer tagCount = jdbcClient.sql("SELECT cardinality(tags) FROM material_concept WHERE id = :id")
+                .param("id", id)
+                .query(Integer.class)
+                .single();
+        assertThat(tagCount).isZero();
     }
 
     @Test

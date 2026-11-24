@@ -56,7 +56,7 @@ class QuestionTypeJudgeFlowTest {
     @BeforeEach
     void setup() {
         userId = userRepository.save(new NewUser("judge@test.com", "1234", "홍길동"));
-        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30));
+        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30, null));
         materialRepository.saveChunks(materialId, List.of(
                 new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다."),
                 new MaterialChunk(2, 2, "UDP는 비연결형 프로토콜이다."),
