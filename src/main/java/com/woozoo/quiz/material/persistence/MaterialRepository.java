@@ -33,8 +33,8 @@ public class MaterialRepository {
 
     public long save(NewMaterial newMaterial) {
         return jdbcClient.sql("""
-                        INSERT INTO material (owner_id, title, original_filename, file_type, total_page_count)
-                        VALUES (:ownerId, :title, :originalFilename, :fileType, :totalPageCount)
+                        INSERT INTO material (owner_id, title, original_filename, file_type, total_page_count, content_hash)
+                        VALUES (:ownerId, :title, :originalFilename, :fileType, :totalPageCount, :contentHash)
                         RETURNING id
                         """)
                 .param("ownerId", newMaterial.ownerId())
@@ -42,6 +42,7 @@ public class MaterialRepository {
                 .param("originalFilename", newMaterial.originalFilename())
                 .param("fileType", newMaterial.fileType().name())
                 .param("totalPageCount", newMaterial.totalPageCount())
+                .param("contentHash", newMaterial.contentHash())
                 .query(Long.class)
                 .single();
     }
@@ -114,5 +115,16 @@ public class MaterialRepository {
                 .param("materialId", materialId)
                 .query(StoredChunk.class)
                 .list();
+    }
+
+    // 같은 사용자가 같은 파일을 이미 올렸는지 본다. 해시가 없는 예전 자료는 걸리지 않는다
+    public boolean existsByOwnerIdAndContentHash(long ownerId, String contentHash) {
+        return jdbcClient.sql("""
+                SELECT EXISTS (SELECT 1 FROM material WHERE owner_id = :ownerId AND content_hash = :contentHash)
+                """)
+                .param("ownerId", ownerId)
+                .param("contentHash", contentHash)
+                .query(Boolean.class)
+                .single();
     }
 }

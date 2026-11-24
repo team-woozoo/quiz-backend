@@ -1,6 +1,8 @@
 package com.woozoo.quiz.infrastructure.generation;
 
 import com.woozoo.quiz.TestcontainersConfiguration;
+import com.woozoo.quiz.infrastructure.analysis.LlmMaterialAnalysisAdapter;
+import com.woozoo.quiz.material.port.MaterialAnalysisPort;
 import com.woozoo.quiz.infrastructure.validation.LlmQuestionTypeJudgeAdapter;
 import com.woozoo.quiz.quiz.port.QuestionTypeJudgePort;
 import com.woozoo.quiz.quiz.port.QuizGenerationPort;
@@ -41,6 +43,14 @@ class LlmProfileContextTest {
         assertThat(context.getBeansOfType(QuestionTypeJudgePort.class).values())
                 .singleElement()
                 .isInstanceOf(LlmQuestionTypeJudgeAdapter.class);
+    }
+
+    // 가짜 분석기가 남으면 어떤 파일이든 학습 자료로 받고, 개념이 청크마다 하나씩 생긴다
+    @Test
+    void llm_프로필에서는_LLM_어댑터만_분석기로_뜬다() {
+        assertThat(context.getBeansOfType(MaterialAnalysisPort.class).values())
+                .singleElement()
+                .isInstanceOf(LlmMaterialAnalysisAdapter.class);
     }
 
     @Test
