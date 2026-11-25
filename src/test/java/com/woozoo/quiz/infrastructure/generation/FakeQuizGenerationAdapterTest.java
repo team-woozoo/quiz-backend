@@ -3,7 +3,8 @@ package com.woozoo.quiz.infrastructure.generation;
 import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
 import com.woozoo.quiz.quiz.domain.SourceScope;
-import com.woozoo.quiz.quiz.port.GeneratedConcept;
+import com.woozoo.quiz.quiz.port.AssignedConcept;
+import com.woozoo.quiz.quiz.port.ConceptFocus;
 import com.woozoo.quiz.quiz.port.GeneratedOption;
 import com.woozoo.quiz.quiz.port.GeneratedQuestion;
 import com.woozoo.quiz.quiz.port.GeneratedQuiz;
@@ -13,7 +14,6 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -30,43 +30,56 @@ class FakeQuizGenerationAdapterTest {
 
     private final FakeQuizGenerationAdapter adapter = new FakeQuizGenerationAdapter(Duration.ZERO);
 
+    // 업로드 분석처럼 청크마다 개념을 하나씩 배정한다
+    private static List<AssignedConcept> conceptPerChunk(List<SourceChunk> chunks) {
+        return chunks.stream()
+                .map(chunk -> new AssignedConcept(chunk.seq(), "개념 " + chunk.seq(), "설명",
+                        List.of(chunk.seq()), List.of(), 0))
+                .toList();
+    }
+
     private static QuizGenerationRequest request(QuizFormat format, int questionCount, List<SourceChunk> chunks) {
-        return new QuizGenerationRequest(chunks, format, Difficulty.NORMAL, questionCount, Map.of(), List.of(), SourceScope.GROUNDED);
+        return QuizGenerationRequest.forNormal(chunks, format, Difficulty.NORMAL, questionCount, Map.of(),
+                conceptPerChunk(chunks), SourceScope.GROUNDED);
     }
 
     private static List<GeneratedQuestion> questionsOf(GeneratedQuiz quiz) {
-        return quiz.concepts().stream().flatMap(concept -> concept.questions().stream()).toList();
+        return quiz.questions();
     }
 
     private static Map<Integer, String> contentBySeq(List<SourceChunk> chunks) {
         return chunks.stream().collect(Collectors.toMap(SourceChunk::seq, SourceChunk::content));
     }
 
-    private static void assertGroundedInChunks(GeneratedQuiz quiz, List<SourceChunk> chunks) {
-        Map<Integer, String> contents = contentBySeq(chunks);
-        for (GeneratedConcept concept : quiz.concepts()) {
-            for (GeneratedQuestion question : concept.questions()) {
-                assertThat(concept.chunkSeqs()).contains(question.sourceChunkSeq());
-                assertThat(contents.get(question.sourceChunkSeq())).contains(question.sourceQuote());
-            }
+    // 검증기가 보는 그대로, 문제가 가리킨 개념의 페이지에 근거가 있고 인용이 원문에 있어야 한다
+    private static void assertGroundedInChunks(GeneratedQuiz quiz, QuizGenerationRequest request) {
+        Map<Integer, String> contents = contentBySeq(request.chunks());
+        Map<Integer, AssignedConcept> conceptByNo = request.assignedConcepts().stream()
+                .collect(Collectors.toMap(AssignedConcept::no, concept -> concept));
+        for (GeneratedQuestion question : quiz.questions()) {
+            assertThat(conceptByNo).containsKey(question.conceptNo());
+            assertThat(conceptByNo.get(question.conceptNo()).chunkSeqs()).contains(question.sourceChunkSeq());
+            assertThat(contents.get(question.sourceChunkSeq())).contains(question.sourceQuote());
         }
     }
 
     @Test
     void OX_문제는_O_X_두_보기에_정답이_O_하나이고_근거가_청크_원문에_있다() {
-        GeneratedQuiz quiz = adapter.generateQuiz(request(QuizFormat.OX, 10, CHUNKS));
+        QuizGenerationRequest request = request(QuizFormat.OX, 10, CHUNKS);
+        GeneratedQuiz quiz = adapter.generateQuiz(request);
 
         assertThat(questionsOf(quiz)).allSatisfy(question -> {
             assertThat(question.options()).extracting(GeneratedOption::content).containsExactly("O", "X");
             assertThat(question.options()).filteredOn(GeneratedOption::isCorrect)
                     .extracting(GeneratedOption::content).containsExactly("O");
         });
-        assertGroundedInChunks(quiz, CHUNKS);
+        assertGroundedInChunks(quiz, request);
     }
 
     @Test
     void 객관식_문제는_서로_다른_보기_4개에_정답이_근거_문장_하나다() {
-        GeneratedQuiz quiz = adapter.generateQuiz(request(QuizFormat.MULTIPLE_CHOICE, 10, CHUNKS));
+        QuizGenerationRequest request = request(QuizFormat.MULTIPLE_CHOICE, 10, CHUNKS);
+        GeneratedQuiz quiz = adapter.generateQuiz(request);
 
         assertThat(questionsOf(quiz)).allSatisfy(question -> {
             assertThat(question.options()).hasSize(4);
@@ -74,7 +87,7 @@ class FakeQuizGenerationAdapterTest {
             assertThat(question.options()).filteredOn(GeneratedOption::isCorrect)
                     .extracting(GeneratedOption::content).containsExactly(question.sourceQuote());
         });
-        assertGroundedInChunks(quiz, CHUNKS);
+        assertGroundedInChunks(quiz, request);
     }
 
     @Test
@@ -86,12 +99,38 @@ class FakeQuizGenerationAdapterTest {
     }
 
     @Test
-    void 청크가_문제_수보다_적으면_청크_수만큼만_만들고_개념_이름이_겹치지_않는다() {
+    void 청크가_문제_수보다_적으면_청크_수만큼만_만들고_청크가_속한_개념을_가리킨다() {
         GeneratedQuiz quiz = adapter.generateQuiz(request(QuizFormat.OX, 10, CHUNKS));
 
-        assertThat(quiz.concepts()).hasSize(4);
-        assertThat(quiz.concepts()).extracting(GeneratedConcept::name).doesNotHaveDuplicates();
-        assertThat(quiz.concepts()).flatExtracting(GeneratedConcept::chunkSeqs).containsExactly(1, 2, 3, 4);
+        assertThat(questionsOf(quiz)).extracting(GeneratedQuestion::sourceChunkSeq).containsExactly(1, 2, 3, 4);
+        assertThat(questionsOf(quiz)).extracting(GeneratedQuestion::conceptNo).containsExactly(1, 2, 3, 4);
+    }
+
+    // 표지처럼 개념에 들지 않은 청크로는 문제를 내지 않는다
+    @Test
+    void 개념에_속하지_않은_청크는_건너뛴다() {
+        List<AssignedConcept> concepts = List.of(new AssignedConcept(1, "UDP", "설명", List.of(2), List.of(), 0));
+        QuizGenerationRequest request = QuizGenerationRequest.forNormal(CHUNKS, QuizFormat.OX, Difficulty.NORMAL,
+                10, Map.of(), concepts, SourceScope.GROUNDED);
+
+        GeneratedQuiz quiz = adapter.generateQuiz(request);
+
+        assertThat(questionsOf(quiz)).singleElement().satisfies(question -> {
+            assertThat(question.conceptNo()).isEqualTo(1);
+            assertThat(question.sourceChunkSeq()).isEqualTo(2);
+        });
+    }
+
+    // 약점 퀴즈는 겨냥한 개념 하나가 보낸 페이지를 모두 가져, 모든 문제가 1번을 가리킨다
+    @Test
+    void 약점_퀴즈는_모든_문제가_1번_개념을_가리킨다() {
+        QuizGenerationRequest request = QuizGenerationRequest.forWeakness(CHUNKS, QuizFormat.OX, Difficulty.NORMAL,
+                10, Map.of(), new ConceptFocus("전송 계층", "설명", List.of()));
+
+        GeneratedQuiz quiz = adapter.generateQuiz(request);
+
+        assertThat(questionsOf(quiz)).hasSize(4).extracting(GeneratedQuestion::conceptNo).containsOnly(1);
+        assertGroundedInChunks(quiz, request);
     }
 
     @Test
@@ -106,12 +145,13 @@ class FakeQuizGenerationAdapterTest {
         String longLine = "가".repeat(150);
         List<SourceChunk> chunks = List.of(new SourceChunk(1, longLine + "\n둘째 줄"));
 
-        GeneratedQuiz quiz = adapter.generateQuiz(request(QuizFormat.OX, 1, chunks));
+        QuizGenerationRequest request = request(QuizFormat.OX, 1, chunks);
+        GeneratedQuiz quiz = adapter.generateQuiz(request);
 
         assertThat(questionsOf(quiz)).singleElement()
                 .extracting(GeneratedQuestion::sourceQuote)
                 .isEqualTo("가".repeat(100));
-        assertGroundedInChunks(quiz, chunks);
+        assertGroundedInChunks(quiz, request);
     }
 
     @Test

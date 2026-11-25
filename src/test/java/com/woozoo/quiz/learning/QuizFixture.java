@@ -64,7 +64,7 @@ public class QuizFixture {
         long materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30, null));
         materialRepository.saveChunks(materialId, List.of(new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다.")));
         long chunkId = materialRepository.findChunks(materialId).getFirst().id();
-        long conceptId = materialConceptRepository.findOrCreate(materialId, "TCP", "연결 지향 전송");
+        long conceptId = materialConceptRepository.save(materialId, "TCP", "연결 지향 전송", List.of());
 
         long quizId = quizRepository.save(new NewQuiz(userId, materialId, QuizKind.NORMAL, QuizFormat.OX, Difficulty.NORMAL));
         List<Long> questionIds = new ArrayList<>();

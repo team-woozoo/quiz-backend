@@ -20,7 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.tuple;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -46,32 +45,43 @@ class MaterialConceptRepositoryTest {
         otherMaterialId = materialRepository.save(new NewMaterial(userId, "네트워크 6강", "06.pdf", FileType.PDF, 30, null));
     }
 
-    // 개념 저장은 퀴즈 저장 단계에서 만들어서, 지금은 직접 넣는다
-    private long insertConcept(long materialId, String name, String description) {
-        return jdbcClient.sql("""
-                        INSERT INTO material_concept (material_id, name, description)
-                        VALUES (:materialId, :name, :description)
-                        RETURNING id
-                        """)
-                .param("materialId", materialId)
-                .param("name", name)
-                .param("description", description)
-                .query(Long.class)
-                .single();
+    private long saveChunk(long materialId, int seq, int pageNo) {
+        materialRepository.saveChunks(materialId, List.of(new MaterialChunk(seq, pageNo, "페이지 " + pageNo)));
+        return materialRepository.findChunks(materialId).stream()
+                .filter(chunk -> chunk.seq() == seq)
+                .findFirst().orElseThrow().id();
     }
 
     @Test
-    void 자료의_개념만_만든_순서대로_조회한다() {
-        long tcpId = insertConcept(materialId, "TCP 연결", "연결 지향 전송");
-        long udpId = insertConcept(materialId, "UDP", "비연결형 전송");
-        insertConcept(otherMaterialId, "IP", "패킷 전달");
+    void 생성에_쓸_개념을_청크_순번_태그_문제_수와_함께_만든_순서대로_조회한다() {
+        long chunk1 = saveChunk(materialId, 1, 3);
+        long chunk2 = saveChunk(materialId, 2, 4);
+        long tcpId = materialConceptRepository.save(materialId, "TCP 연결", "연결 지향 전송",
+                List.of(ConceptTag.RULE, ConceptTag.CONTRAST));
+        long udpId = materialConceptRepository.save(materialId, "UDP", "비연결형 전송", List.of());
+        materialConceptRepository.save(otherMaterialId, "IP", "패킷 전달", List.of());
+        // 연결 순서와 상관없이 청크 순번은 작은 것부터 온다
+        materialConceptRepository.linkChunk(tcpId, chunk2);
+        materialConceptRepository.linkChunk(tcpId, chunk1);
 
-        List<MaterialConcept> result = materialConceptRepository.findByMaterialId(materialId);
+        List<MaterialConcept> result = materialConceptRepository.findForGeneration(materialId);
 
-        assertThat(result).extracting(MaterialConcept::id, MaterialConcept::name, MaterialConcept::description)
-                .containsExactly(
-                        tuple(tcpId, "TCP 연결", "연결 지향 전송"),
-                        tuple(udpId, "UDP", "비연결형 전송"));
+        assertThat(result).containsExactly(
+                new MaterialConcept(tcpId, "TCP 연결", "연결 지향 전송",
+                        List.of(ConceptTag.RULE, ConceptTag.CONTRAST), List.of(1, 2), 0),
+                new MaterialConcept(udpId, "UDP", "비연결형 전송", List.of(), List.of(), 0));
+    }
+
+    // 업로드 분석 전에 생긴 개념은 태그가 NULL 이다. 생성 쪽은 빈 목록으로 받아 NULL 을 다루지 않게 한다
+    @Test
+    void 태그가_NULL_인_개념은_빈_목록으로_조회한다() {
+        jdbcClient.sql("INSERT INTO material_concept (material_id, name, description) VALUES (:materialId, '예전 개념', '설명')")
+                .param("materialId", materialId)
+                .update();
+
+        assertThat(materialConceptRepository.findForGeneration(materialId))
+                .singleElement()
+                .satisfies(concept -> assertThat(concept.tags()).isEmpty());
     }
 
     @Test
@@ -103,34 +113,22 @@ class MaterialConceptRepositoryTest {
 
     @Test
     void 개념이_없는_자료는_빈_목록을_돌려준다() {
-        assertThat(materialConceptRepository.findByMaterialId(materialId)).isEmpty();
+        assertThat(materialConceptRepository.findForGeneration(materialId)).isEmpty();
     }
 
+    // 이름 유일 제약은 자료마다 걸린다
     @Test
-    void 같은_자료에_같은_이름이면_기존_개념_아이디를_돌려주고_처음_설명을_둔다() {
-        long first = materialConceptRepository.findOrCreate(materialId, "TCP 연결", "처음 설명");
-        long second = materialConceptRepository.findOrCreate(materialId, "TCP 연결", "나중 설명");
-
-        assertThat(second).isEqualTo(first);
-        assertThat(materialConceptRepository.findByMaterialId(materialId))
-                .singleElement()
-                .extracting(MaterialConcept::description)
-                .isEqualTo("처음 설명");
-    }
-
-    @Test
-    void 다른_자료면_같은_이름이라도_새_개념을_만든다() {
-        long first = materialConceptRepository.findOrCreate(materialId, "TCP 연결", "설명");
-        long other = materialConceptRepository.findOrCreate(otherMaterialId, "TCP 연결", "설명");
+    void 다른_자료면_같은_이름의_개념을_만들_수_있다() {
+        long first = materialConceptRepository.save(materialId, "TCP 연결", "설명", List.of());
+        long other = materialConceptRepository.save(otherMaterialId, "TCP 연결", "설명", List.of());
 
         assertThat(other).isNotEqualTo(first);
     }
 
     @Test
     void 이미_이어진_청크를_다시_이어도_한_번만_남는다() {
-        long conceptId = materialConceptRepository.findOrCreate(materialId, "TCP 연결", "설명");
-        materialRepository.saveChunks(materialId, List.of(new MaterialChunk(1, 1, "첫 페이지")));
-        long chunkId = materialRepository.findChunks(materialId).getFirst().id();
+        long conceptId = materialConceptRepository.save(materialId, "TCP 연결", "설명", List.of());
+        long chunkId = saveChunk(materialId, 1, 1);
 
         materialConceptRepository.linkChunk(conceptId, chunkId);
         materialConceptRepository.linkChunk(conceptId, chunkId);

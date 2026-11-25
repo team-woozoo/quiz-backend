@@ -4,8 +4,8 @@ import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
 import com.woozoo.quiz.quiz.domain.SourceScope;
+import com.woozoo.quiz.quiz.port.AssignedConcept;
 import com.woozoo.quiz.quiz.port.ConceptFocus;
-import com.woozoo.quiz.quiz.port.GeneratedConcept;
 import com.woozoo.quiz.quiz.port.GeneratedOption;
 import com.woozoo.quiz.quiz.port.GeneratedQuestion;
 import com.woozoo.quiz.quiz.port.GeneratedQuiz;
@@ -16,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -34,16 +35,56 @@ class GeneratedQuizValidatorTest {
 
     private final GeneratedQuizValidator validator = new GeneratedQuizValidator();
 
-    private static QuizGenerationRequest request(QuizFormat format, int questionCount) {
-        return new QuizGenerationRequest(CHUNKS, format, Difficulty.NORMAL, questionCount, Map.of(), List.of(), SourceScope.GROUNDED);
+    // 요청에 보낸 개념 하나와, 생성기가 그 개념으로 낸 문제들이다. 개념 번호는 넘긴 순서대로 1부터 매긴다
+    private record ConceptCase(String name, List<Integer> chunkSeqs, List<GeneratedQuestion> questions) {
+    }
+
+    private static ConceptCase concept(String name, List<Integer> chunkSeqs, GeneratedQuestion... questions) {
+        return new ConceptCase(name, chunkSeqs, Arrays.asList(questions));
+    }
+
+    private static List<AssignedConcept> assignedOf(ConceptCase... cases) {
+        List<AssignedConcept> assigned = new ArrayList<>();
+        for (int i = 0; i < cases.length; i++) {
+            assigned.add(new AssignedConcept(i + 1, cases[i].name(), "설명", cases[i].chunkSeqs(), List.of(), 0));
+        }
+        return assigned;
+    }
+
+    // 생성기 응답처럼 문제마다 그 개념의 번호를 단다. null 문제는 그대로 둔다
+    private static GeneratedQuiz quizOf(ConceptCase... cases) {
+        List<GeneratedQuestion> questions = new ArrayList<>();
+        for (int i = 0; i < cases.length; i++) {
+            for (GeneratedQuestion question : cases[i].questions()) {
+                questions.add(question == null ? null : withConceptNo(question, i + 1));
+            }
+        }
+        return new GeneratedQuiz(questions);
+    }
+
+    private static GeneratedQuestion withConceptNo(GeneratedQuestion question, int conceptNo) {
+        return new GeneratedQuestion(conceptNo, question.content(), question.sourceQuote(), question.cognitiveType(),
+                question.explanation(), question.options(), question.sourceChunkSeq());
+    }
+
+    private GeneratedQuiz validate(List<SourceChunk> chunks, QuizFormat format, int questionCount,
+                                   Map<CognitiveType, Integer> mix, ConceptCase... cases) {
+        QuizGenerationRequest request = QuizGenerationRequest.forNormal(chunks, format, Difficulty.NORMAL,
+                questionCount, mix, assignedOf(cases), SourceScope.GROUNDED);
+        return validator.validate(request, quizOf(cases));
+    }
+
+    private GeneratedQuiz validateOx(ConceptCase... cases) {
+        return validate(CHUNKS, QuizFormat.OX, 10, Map.of(), cases);
     }
 
     private static List<GeneratedOption> oxOptions() {
         return List.of(new GeneratedOption("O", true), new GeneratedOption("X", false));
     }
 
+    // 개념 번호는 quizOf 가 단다. 여기서는 0 으로 두고 나머지만 정한다
     private static GeneratedQuestion question(String content, String quote, int seq, List<GeneratedOption> options) {
-        return new GeneratedQuestion(content, quote, CognitiveType.REMEMBER, "해설", options, seq);
+        return new GeneratedQuestion(0, content, quote, CognitiveType.REMEMBER, "해설", options, seq);
     }
 
     // 1번 청크에 근거한, 모든 규칙을 지키는 OX 문제
@@ -51,19 +92,10 @@ class GeneratedQuizValidatorTest {
         return question(content, TCP_QUOTE, 1, oxOptions());
     }
 
-    private static GeneratedConcept concept(String name, List<Integer> chunkSeqs, GeneratedQuestion... questions) {
-        return new GeneratedConcept(name, "설명", chunkSeqs, Arrays.asList(questions));
-    }
-
     private static List<String> contentsOf(GeneratedQuiz quiz) {
-        return quiz.concepts().stream()
-                .flatMap(concept -> concept.questions().stream())
+        return quiz.questions().stream()
                 .map(GeneratedQuestion::content)
                 .toList();
-    }
-
-    private GeneratedQuiz validateOx(GeneratedConcept... concepts) {
-        return validator.validate(request(QuizFormat.OX, 10), new GeneratedQuiz(List.of(concepts)));
     }
 
     @Test
@@ -72,11 +104,7 @@ class GeneratedQuizValidatorTest {
 
         GeneratedQuiz result = validateOx(concept("TCP", List.of(1), valid));
 
-        assertThat(result.concepts()).singleElement().satisfies(concept -> {
-            assertThat(concept.name()).isEqualTo("TCP");
-            assertThat(concept.chunkSeqs()).containsExactly(1);
-            assertThat(concept.questions()).containsExactly(valid);
-        });
+        assertThat(result.questions()).containsExactly(withConceptNo(valid, 1));
     }
 
     @Test
@@ -125,9 +153,9 @@ class GeneratedQuizValidatorTest {
     void 필수_값이_비어_있으면_버린다() {
         GeneratedQuestion blankContent = question("   ", TCP_QUOTE, 1, oxOptions());
         GeneratedQuestion nullExplanation =
-                new GeneratedQuestion("해설 없음", TCP_QUOTE, CognitiveType.REMEMBER, null, oxOptions(), 1);
+                new GeneratedQuestion(0, "해설 없음", TCP_QUOTE, CognitiveType.REMEMBER, null, oxOptions(), 1);
         GeneratedQuestion nullCognitiveType =
-                new GeneratedQuestion("유형 없음", TCP_QUOTE, null, "해설", oxOptions(), 1);
+                new GeneratedQuestion(0, "유형 없음", TCP_QUOTE, null, "해설", oxOptions(), 1);
         GeneratedQuestion nullQuote = question("인용문 없음", null, 1, oxOptions());
         GeneratedQuestion blankOption = question("빈 보기", TCP_QUOTE, 1,
                 List.of(new GeneratedOption("O", true), new GeneratedOption(" ", false)));
@@ -176,85 +204,41 @@ class GeneratedQuizValidatorTest {
         assertThat(contentsOf(result)).containsExactly("줄을 넘는 인용문");
     }
 
+    // 보내지 않은 번호는 저장할 개념 id 가 없다
     @Test
-    void 요청하지_않은_청크_번호는_개념에서_뺀다() {
-        GeneratedQuiz result = validateOx(concept("TCP", List.of(1, 99), validOx("정상")));
+    void 보내지_않은_개념_번호를_가리키면_버린다() {
+        GeneratedQuestion unknownConcept = new GeneratedQuestion(99, "모르는 개념", TCP_QUOTE,
+                CognitiveType.REMEMBER, "해설", oxOptions(), 1);
+        QuizGenerationRequest request = QuizGenerationRequest.forNormal(CHUNKS, QuizFormat.OX, Difficulty.NORMAL,
+                10, Map.of(), assignedOf(concept("TCP", List.of(1))), SourceScope.GROUNDED);
 
-        assertThat(result.concepts()).singleElement()
-                .extracting(GeneratedConcept::chunkSeqs)
-                .isEqualTo(List.of(1));
+        GeneratedQuiz result = validator.validate(request,
+                new GeneratedQuiz(List.of(withConceptNo(validOx("정상"), 1), unknownConcept)));
+
+        assertThat(contentsOf(result)).containsExactly("정상");
     }
 
+    // 개념의 페이지는 DB 에서 오지만, 원문을 대조하려면 이번에 보낸 청크여야 한다
     @Test
-    void 요청한_청크가_하나도_없는_개념은_버린다() {
-        GeneratedQuestion unknownChunk = question("없는 청크", TCP_QUOTE, 99, oxOptions());
+    void 근거_청크가_개념의_페이지라도_보내지_않은_청크면_버린다() {
+        GeneratedQuestion unsentChunk = question("보내지 않은 청크", TCP_QUOTE, 99, oxOptions());
 
-        GeneratedQuiz result = validateOx(concept("없는 청크 개념", List.of(99), unknownChunk));
-
-        assertThat(result.concepts()).isEmpty();
-    }
-
-    @Test
-    void 이름이_같은_개념은_청크와_문제를_합친다() {
-        GeneratedQuestion tcp = validOx("앞쪽 문제");
-        GeneratedQuestion udp = question("뒤쪽 문제", UDP_QUOTE, 2, oxOptions());
-
-        GeneratedQuiz result = validateOx(
-                concept("전송 계층", List.of(1), tcp),
-                concept(" 전송 계층 ", List.of(1, 2), udp));
-
-        assertThat(result.concepts()).singleElement().satisfies(concept -> {
-            assertThat(concept.name()).isEqualTo("전송 계층");
-            assertThat(concept.chunkSeqs()).containsExactly(1, 2);
-            assertThat(concept.questions()).containsExactly(tcp, udp);
-        });
-    }
-
-    @Test
-    void 한_개념_안에서_겹친_청크_번호는_하나만_남긴다() {
-        GeneratedQuiz result = validateOx(concept("TCP", List.of(1, 1), validOx("정상")));
-
-        assertThat(result.concepts()).singleElement()
-                .extracting(GeneratedConcept::chunkSeqs)
-                .isEqualTo(List.of(1));
-    }
-
-    @Test
-    void 이름이나_설명이_비었거나_이름이_255자를_넘으면_개념째_버린다() {
-        GeneratedConcept blankName = concept("  ", List.of(1), validOx("이름 없음"));
-        GeneratedConcept longName = concept("가".repeat(256), List.of(1), validOx("긴 이름"));
-        GeneratedConcept nullDescription = new GeneratedConcept("설명 없음", null, List.of(1), List.of(validOx("설명 없음")));
-        GeneratedConcept valid = concept("가".repeat(255), List.of(1), validOx("정상"));
-
-        GeneratedQuiz result = validateOx(blankName, longName, nullDescription, valid);
+        GeneratedQuiz result = validateOx(concept("TCP", List.of(1, 99), validOx("정상"), unsentChunk));
 
         assertThat(contentsOf(result)).containsExactly("정상");
     }
 
     @Test
-    void 통과한_문제가_없는_개념은_버린다() {
-        GeneratedQuestion madeUpQuote = question("지어낸 인용문", "강의에 없는 문장", 1, oxOptions());
-
-        GeneratedQuiz result = validateOx(
-                concept("TCP", List.of(1), madeUpQuote),
-                concept("UDP", List.of(2), question("정상", UDP_QUOTE, 2, oxOptions())));
-
-        assertThat(result.concepts()).extracting(GeneratedConcept::name).containsExactly("UDP");
-    }
-
-    @Test
     void 요청한_문제_수까지만_개념을_넘어서_남긴다() {
-        GeneratedQuiz generated = new GeneratedQuiz(List.of(
+        GeneratedQuiz result = validate(CHUNKS, QuizFormat.OX, 3, Map.of(),
                 concept("TCP", List.of(1), validOx("1"), validOx("2")),
                 concept("UDP", List.of(2),
                         question("3", UDP_QUOTE, 2, oxOptions()),
                         question("4", UDP_QUOTE, 2, oxOptions())),
-                concept("IP", List.of(1), validOx("5"))));
-
-        GeneratedQuiz result = validator.validate(request(QuizFormat.OX, 3), generated);
+                concept("IP", List.of(1), validOx("5")));
 
         assertThat(contentsOf(result)).containsExactly("1", "2", "3");
-        assertThat(result.concepts()).extracting(GeneratedConcept::name).containsExactly("TCP", "UDP");
+        assertThat(result.questions()).extracting(GeneratedQuestion::conceptNo).containsExactly(1, 1, 2);
     }
 
     // 잘못된 문제를 먼저 세면, 뒤의 정상 문제가 자리를 잃는다
@@ -262,48 +246,39 @@ class GeneratedQuizValidatorTest {
     void 버린_문제는_문제_수에_세지_않는다() {
         GeneratedQuestion madeUpQuote = question("지어낸 인용문", "강의에 없는 문장", 1, oxOptions());
 
-        GeneratedQuiz generated = new GeneratedQuiz(List.of(
-                concept("TCP", List.of(1), madeUpQuote, validOx("1"), validOx("2"))));
-
-        GeneratedQuiz result = validator.validate(request(QuizFormat.OX, 2), generated);
+        GeneratedQuiz result = validate(CHUNKS, QuizFormat.OX, 2, Map.of(),
+                concept("TCP", List.of(1), madeUpQuote, validOx("1"), validOx("2")));
 
         assertThat(contentsOf(result)).containsExactly("1", "2");
     }
 
     private static GeneratedQuestion typedOx(String content, CognitiveType type) {
-        return new GeneratedQuestion(content, TCP_QUOTE, type, "해설", oxOptions(), 1);
-    }
-
-    private static QuizGenerationRequest mixRequest(int questionCount, Map<CognitiveType, Integer> mix) {
-        return new QuizGenerationRequest(CHUNKS, QuizFormat.OX, Difficulty.NORMAL, questionCount, mix, List.of(), SourceScope.GROUNDED);
+        return new GeneratedQuestion(0, content, TCP_QUOTE, type, "해설", oxOptions(), 1);
     }
 
     // 개념 순서대로 자르면 자료 뒤쪽 개념의 평가 문제가 잘린다
     @Test
     void 넘치면_목표보다_많이_나온_유형에서_뒤쪽부터_뺀다() {
-        GeneratedQuiz generated = new GeneratedQuiz(List.of(
+        Map<CognitiveType, Integer> mix = Map.of(
+                CognitiveType.REMEMBER, 1, CognitiveType.UNDERSTAND, 1, CognitiveType.EVALUATE, 1);
+
+        GeneratedQuiz result = validate(CHUNKS, QuizFormat.OX, 3, mix,
                 concept("앞쪽 개념", List.of(1),
                         typedOx("기억", CognitiveType.REMEMBER),
                         typedOx("이해 1", CognitiveType.UNDERSTAND),
                         typedOx("이해 2", CognitiveType.UNDERSTAND)),
-                concept("뒤쪽 개념", List.of(1), typedOx("평가", CognitiveType.EVALUATE))));
-        Map<CognitiveType, Integer> mix = Map.of(
-                CognitiveType.REMEMBER, 1, CognitiveType.UNDERSTAND, 1, CognitiveType.EVALUATE, 1);
-
-        GeneratedQuiz result = validator.validate(mixRequest(3, mix), generated);
+                concept("뒤쪽 개념", List.of(1), typedOx("평가", CognitiveType.EVALUATE)));
 
         assertThat(contentsOf(result)).containsExactly("기억", "이해 1", "평가");
     }
 
     @Test
     void 목표에_없는_유형부터_뺀다() {
-        GeneratedQuiz generated = new GeneratedQuiz(List.of(
+        GeneratedQuiz result = validate(CHUNKS, QuizFormat.OX, 2, Map.of(CognitiveType.REMEMBER, 2),
                 concept("TCP", List.of(1),
                         typedOx("분석", CognitiveType.ANALYZE),
                         typedOx("기억 1", CognitiveType.REMEMBER),
-                        typedOx("기억 2", CognitiveType.REMEMBER))));
-
-        GeneratedQuiz result = validator.validate(mixRequest(2, Map.of(CognitiveType.REMEMBER, 2)), generated);
+                        typedOx("기억 2", CognitiveType.REMEMBER)));
 
         assertThat(contentsOf(result)).containsExactly("기억 1", "기억 2");
     }
@@ -312,14 +287,13 @@ class GeneratedQuizValidatorTest {
     @Test
     @ExtendWith(OutputCaptureExtension.class)
     void 넘쳐서_뺀_문제는_유형별로_따로_로그에_남긴다(CapturedOutput output) {
-        GeneratedQuiz generated = new GeneratedQuiz(List.of(
+        Map<CognitiveType, Integer> mix = Map.of(CognitiveType.REMEMBER, 1, CognitiveType.UNDERSTAND, 1);
+
+        validate(CHUNKS, QuizFormat.OX, 2, mix,
                 concept("TCP", List.of(1),
                         typedOx("기억", CognitiveType.REMEMBER),
                         typedOx("이해 1", CognitiveType.UNDERSTAND),
-                        typedOx("이해 2", CognitiveType.UNDERSTAND))));
-        Map<CognitiveType, Integer> mix = Map.of(CognitiveType.REMEMBER, 1, CognitiveType.UNDERSTAND, 1);
-
-        validator.validate(mixRequest(2, mix), generated);
+                        typedOx("이해 2", CognitiveType.UNDERSTAND)));
 
         assertThat(output).contains("받은 문제 3개, 남긴 문제 2개, 버린 문제 0개")
                 .contains("넘쳐서 뺀 문제 1개 {UNDERSTAND=1}");
@@ -333,34 +307,34 @@ class GeneratedQuizValidatorTest {
         GeneratedQuestion multipleChoice = question("객관식", TCP_QUOTE, 1, fourOptions);
         GeneratedQuestion ox = validOx("OX");
 
-        GeneratedQuiz result = validator.validate(request(QuizFormat.MULTIPLE_CHOICE, 10),
-                new GeneratedQuiz(List.of(concept("TCP", List.of(1), multipleChoice, ox))));
+        GeneratedQuiz result = validate(CHUNKS, QuizFormat.MULTIPLE_CHOICE, 10, Map.of(),
+                concept("TCP", List.of(1), multipleChoice, ox));
 
         assertThat(contentsOf(result)).containsExactly("객관식");
     }
 
     @Test
-    void 개념_목록이_null_이면_빈_결과를_돌려준다() {
-        GeneratedQuiz result = validator.validate(request(QuizFormat.OX, 10), new GeneratedQuiz(null));
+    void 문제_목록이_null_이면_빈_결과를_돌려준다() {
+        QuizGenerationRequest request = QuizGenerationRequest.forNormal(CHUNKS, QuizFormat.OX, Difficulty.NORMAL,
+                10, Map.of(), assignedOf(concept("TCP", List.of(1))), SourceScope.GROUNDED);
 
-        assertThat(result.concepts()).isEmpty();
+        GeneratedQuiz result = validator.validate(request, new GeneratedQuiz(null));
+
+        assertThat(result.questions()).isEmpty();
     }
 
-    // 약점 퀴즈는 보낸 페이지에 다른 개념도 있어, 겨냥한 개념의 문제만 남긴다. 띄어쓰기와 기호, 대소문자는 가리지 않는다
+    // 약점 퀴즈는 겨냥한 개념을 1번으로만 보내, 다른 번호를 가리킨 문제는 같은 규칙으로 빠진다
     @Test
-    @ExtendWith(OutputCaptureExtension.class)
-    void 겨냥한_개념이_있으면_그_개념의_문제만_남긴다(CapturedOutput output) {
-        QuizGenerationRequest focused = new QuizGenerationRequest(CHUNKS, QuizFormat.OX, Difficulty.NORMAL, 10,
-                Map.of(), List.of(), new ConceptFocus("TCP 연결", "설명", List.of()), SourceScope.GROUNDED);
-        GeneratedQuiz generated = new GeneratedQuiz(List.of(
-                concept("TCP 연결", List.of(1), validOx("이름 그대로")),
-                concept("tcp-연결!", List.of(1), validOx("기호만 다름")),
-                concept("UDP", List.of(2), question("다른 개념", UDP_QUOTE, 2, oxOptions()))));
+    void 약점_퀴즈는_겨냥한_개념의_문제만_남긴다() {
+        QuizGenerationRequest focused = QuizGenerationRequest.forWeakness(CHUNKS, QuizFormat.OX, Difficulty.NORMAL,
+                10, Map.of(), new ConceptFocus("TCP 연결", "설명", List.of()));
+        GeneratedQuestion otherConcept = new GeneratedQuestion(2, "다른 개념", UDP_QUOTE,
+                CognitiveType.REMEMBER, "해설", oxOptions(), 2);
 
-        GeneratedQuiz result = validator.validate(focused, generated);
+        GeneratedQuiz result = validator.validate(focused,
+                new GeneratedQuiz(List.of(withConceptNo(validOx("겨냥한 개념"), 1), otherConcept)));
 
-        assertThat(contentsOf(result)).containsExactly("이름 그대로", "기호만 다름");
-        assertThat(output).contains("OUTSIDE_FOCUS=1");
+        assertThat(contentsOf(result)).containsExactly("겨냥한 개념");
     }
 
     // 프롬프트를 고칠 때 볼 로그다. 이유는 처음 걸린 규칙 하나로 센다
@@ -373,11 +347,11 @@ class GeneratedQuizValidatorTest {
                 List.of(new GeneratedOption("O", false), new GeneratedOption("X", false)));
 
         validateOx(concept("TCP", List.of(1), validOx("정상"), wrongQuote, otherWrongQuote, noAnswer),
-                concept("모르는 청크", List.of(99), validOx("청크 없음")));
+                concept("UDP", List.of(2), question("다른 개념 청크", TCP_QUOTE, 1, oxOptions())));
 
         // 받은 5개 중 정상 1개만 남는다
         assertThat(output).contains("받은 문제 5개, 남긴 문제 1개, 버린 문제 4개")
-                .contains("NO_KNOWN_CHUNK=1")
+                .contains("SOURCE_NOT_IN_CONCEPT=1")
                 .contains("ANSWER_COUNT=1")
                 .contains("QUOTE_NOT_IN_SOURCE=2")
                 .contains("버린 유형 {REMEMBER=4}");
@@ -410,10 +384,8 @@ class GeneratedQuizValidatorTest {
         GeneratedQuestion[] questions = Arrays.stream(quotes)
                 .map(quote -> question(quote, quote, 3, oxOptions()))
                 .toArray(GeneratedQuestion[]::new);
-        QuizGenerationRequest slideRequest =
-                new QuizGenerationRequest(List.of(SLIDE), QuizFormat.OX, Difficulty.NORMAL, 10, Map.of(), List.of(), SourceScope.GROUNDED);
-        return contentsOf(validator.validate(slideRequest,
-                new GeneratedQuiz(List.of(concept("엑셀", List.of(3), questions)))));
+        return contentsOf(validate(List.of(SLIDE), QuizFormat.OX, 10, Map.of(),
+                concept("엑셀", List.of(3), questions)));
     }
 
     // AI 는 목록의 제목 줄과 설명 줄을 이으며 글머리 기호를 다른 기호로 바꾸곤 한다. 글자는 원문 그대로라 통과시킨다
@@ -543,11 +515,9 @@ class GeneratedQuizValidatorTest {
     @Test
     void 공백_없이_붙은_슬래시는_조각을_나누지_않는다() {
         SourceChunk path = new SourceChunk(4, "저장 경로는 C:/data/report.xlsx 이다");
-        QuizGenerationRequest pathRequest =
-                new QuizGenerationRequest(List.of(path), QuizFormat.OX, Difficulty.NORMAL, 10, Map.of(), List.of(), SourceScope.GROUNDED);
         GeneratedQuestion pathQuote = question("경로", "C:/data/report.xlsx", 4, oxOptions());
 
-        assertThat(contentsOf(validator.validate(pathRequest,
-                new GeneratedQuiz(List.of(concept("경로", List.of(4), pathQuote)))))).containsExactly("경로");
+        assertThat(contentsOf(validate(List.of(path), QuizFormat.OX, 10, Map.of(),
+                concept("경로", List.of(4), pathQuote)))).containsExactly("경로");
     }
 }
