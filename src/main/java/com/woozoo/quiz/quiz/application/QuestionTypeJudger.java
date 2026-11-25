@@ -1,7 +1,6 @@
 package com.woozoo.quiz.quiz.application;
 
 import com.woozoo.quiz.quiz.domain.CognitiveType;
-import com.woozoo.quiz.quiz.port.GeneratedConcept;
 import com.woozoo.quiz.quiz.port.GeneratedQuestion;
 import com.woozoo.quiz.quiz.port.GeneratedQuiz;
 import com.woozoo.quiz.quiz.port.JudgedQuestionType;
@@ -55,12 +54,11 @@ public class QuestionTypeJudger {
         List<QuestionToJudgeType> questions = new ArrayList<>();
 
         int index = 0;
-        for (GeneratedConcept concept : quiz.concepts()) {
-            for (GeneratedQuestion question : concept.questions()) {
-                String chunk = chunksBySeq.get(question.sourceChunkSeq());
-                questions.add(new QuestionToJudgeType(index++, question.content(), question.sourceQuote(),
-                        question.explanation(), question.options(), chunk));
-            }
+        for (GeneratedQuestion question : quiz.questions()) {
+            String chunk = chunksBySeq.get(question.sourceChunkSeq());
+            questions.add(new QuestionToJudgeType(index++, question.content(), question.sourceQuote(),
+                    question.explanation(), question.options(), chunk));
+
         }
         return questions;
     }
@@ -74,32 +72,26 @@ public class QuestionTypeJudger {
                 .collect(Collectors.toMap(JudgedQuestionType::index, Function.identity(),
                         (first, second) -> first));
 
-        List<GeneratedConcept> matchedConcepts = new ArrayList<>();
+        List<GeneratedQuestion> matchedQuestions = new ArrayList<>();
         Map<String, Integer> typePairs = new TreeMap<>();
         int matchedCount = 0;
 
         int index = 0;
-        for (GeneratedConcept concept : quiz.concepts()) {
-            List<GeneratedQuestion> matchedQuestions = new ArrayList<>();
-            for (GeneratedQuestion question : concept.questions()) {
-                JudgedQuestionType judged = judgedByIndex.get(index++);
-                CognitiveType type = judged == null ? null : judged.cognitiveType();
-                typePairs.merge(question.cognitiveType() + "->" + type, 1, Integer::sum);
-                if (type == question.cognitiveType()) {
-                    matchedQuestions.add(question);
-                    matchedCount++;
-                } else {
-                    log.debug("유형 불일치: {} -> {}\n문제: {}\n보기: {}\n인용: {}\n이유: {}",
-                            question.cognitiveType(), type, question.content(), question.options(),
-                            question.sourceQuote(), judged == null ? null : judged.reason());
-                }
-            }
-            if (!matchedQuestions.isEmpty()) {
-                matchedConcepts.add(new GeneratedConcept(concept.name(), concept.description(),
-                        concept.chunkSeqs(), matchedQuestions));
+
+        for (GeneratedQuestion question : quiz.questions()) {
+            JudgedQuestionType judged = judgedByIndex.get(index++);
+            CognitiveType type = judged == null ? null : judged.cognitiveType();
+            typePairs.merge(question.cognitiveType() + "->" + type, 1, Integer::sum);
+            if (type == question.cognitiveType()) {
+                matchedQuestions.add(question);
+                matchedCount++;
+            } else {
+                log.debug("유형 불일치: {} -> {}\n문제: {}\n보기: {}\n인용: {}\n이유: {}",
+                        question.cognitiveType(), type, question.content(), question.options(),
+                        question.sourceQuote(), judged == null ? null : judged.reason());
             }
         }
         log.info("유형 판정 결과: 보낸 문제 {}개, 남긴 문제 {}개, 생성 유형->판정 유형 {}", index, matchedCount, typePairs);
-        return new GeneratedQuiz(matchedConcepts);
+        return new GeneratedQuiz(matchedQuestions);
     }
 }

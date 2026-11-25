@@ -85,7 +85,7 @@ class LearningProfileRepositoryTest {
     }
 
     private long concept(Material material, String name) {
-        return materialConceptRepository.findOrCreate(material.id(), name, "설명");
+        return materialConceptRepository.save(material.id(), name, "설명", List.of());
     }
 
     // 보기 O 가 정답인 OX 문제

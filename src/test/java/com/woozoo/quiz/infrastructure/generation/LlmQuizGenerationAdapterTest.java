@@ -4,6 +4,7 @@ import com.woozoo.quiz.quiz.domain.CognitiveType;
 import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
 import com.woozoo.quiz.quiz.domain.SourceScope;
+import com.woozoo.quiz.quiz.port.AssignedConcept;
 import com.woozoo.quiz.quiz.port.GeneratedOption;
 import com.woozoo.quiz.quiz.port.GeneratedQuestion;
 import com.woozoo.quiz.quiz.port.GeneratedQuiz;
@@ -41,25 +42,22 @@ class LlmQuizGenerationAdapterTest {
     private static final QuizGenerationRequest REQUEST = requestOf(SourceScope.GROUNDED);
 
     private static QuizGenerationRequest requestOf(SourceScope scope) {
-        return new QuizGenerationRequest(
+        return QuizGenerationRequest.forNormal(
                 List.of(new SourceChunk(1, "TCP는 연결 지향 프로토콜이다.")),
-                QuizFormat.OX, Difficulty.NORMAL, 1, Map.of(), List.of(), scope);
+                QuizFormat.OX, Difficulty.NORMAL, 1, Map.of(),
+                List.of(new AssignedConcept(1, "TCP", "연결 지향 프로토콜이다.", List.of(1), List.of(), 0)), scope);
     }
 
     // 게이트웨이가 돌려주는 모양 그대로다. 필드 이름은 GeneratedQuiz 레코드에서 만든 스키마를 따른다
     private static final String QUIZ_JSON = """
-            {"concepts": [{
-              "name": "TCP",
-              "description": "연결 지향 프로토콜이다.",
-              "chunkSeqs": [1],
-              "questions": [{
-                "content": "TCP는 연결 지향이다.",
-                "sourceQuote": "TCP는 연결 지향 프로토콜이다.",
-                "cognitiveType": "REMEMBER",
-                "explanation": "자료에 그대로 나온다.",
-                "options": [{"content": "O", "isCorrect": true}, {"content": "X", "isCorrect": false}],
-                "sourceChunkSeq": 1
-              }]
+            {"questions": [{
+              "conceptNo": 1,
+              "content": "TCP는 연결 지향이다.",
+              "sourceQuote": "TCP는 연결 지향 프로토콜이다.",
+              "cognitiveType": "REMEMBER",
+              "explanation": "자료에 그대로 나온다.",
+              "options": [{"content": "O", "isCorrect": true}, {"content": "X", "isCorrect": false}],
+              "sourceChunkSeq": 1
             }]}
             """;
 
@@ -114,10 +112,8 @@ class LlmQuizGenerationAdapterTest {
     void 응답_JSON_을_GeneratedQuiz_로_바꾼다() {
         GeneratedQuiz quiz = adapterWith(new StubChatModel(prompt -> respond(QUIZ_JSON))).generateQuiz(REQUEST);
 
-        assertThat(quiz.concepts()).singleElement().satisfies(concept -> {
-            assertThat(concept.name()).isEqualTo("TCP");
-            assertThat(concept.chunkSeqs()).containsExactly(1);
-            GeneratedQuestion question = concept.questions().getFirst();
+        assertThat(quiz.questions()).singleElement().satisfies(question -> {
+            assertThat(question.conceptNo()).isEqualTo(1);
             assertThat(question.cognitiveType()).isEqualTo(CognitiveType.REMEMBER);
             assertThat(question.sourceChunkSeq()).isEqualTo(1);
             // record 의 isCorrect 가 스키마와 같은 이름으로 읽혀야 정답이 남는다
@@ -205,7 +201,7 @@ class LlmQuizGenerationAdapterTest {
         assertThat(chatModel.received.getOptions()).isInstanceOfSatisfying(OpenAiChatOptions.class, options -> {
             assertThat(options.getResponseFormat().getType()).isEqualTo(OpenAiChatModel.ResponseFormat.Type.JSON_SCHEMA);
             assertThat(options.getResponseFormat().getJsonSchema())
-                    .contains("\"concepts\"", "\"sourceQuote\"", "\"sourceChunkSeq\"", "\"isCorrect\"");
+                    .contains("\"questions\"", "\"conceptNo\"", "\"sourceQuote\"", "\"sourceChunkSeq\"", "\"isCorrect\"");
         });
         assertThat(chatModel.received.getUserMessage().getText()).doesNotContain("JSON Schema");
     }
@@ -248,8 +244,8 @@ class LlmQuizGenerationAdapterTest {
     }
 
     @Test
-    void 개념_목록이_비어_있으면_QuizGenerationException_이다() {
-        LlmQuizGenerationAdapter adapter = adapterWith(new StubChatModel(prompt -> respond("{\"concepts\": []}")));
+    void 문제_목록이_비어_있으면_QuizGenerationException_이다() {
+        LlmQuizGenerationAdapter adapter = adapterWith(new StubChatModel(prompt -> respond("{\"questions\": []}")));
 
         assertThatThrownBy(() -> adapter.generateQuiz(REQUEST)).isInstanceOf(QuizGenerationException.class);
     }
@@ -267,6 +263,6 @@ class LlmQuizGenerationAdapterTest {
         GeneratedQuiz quiz = adapterWith(new StubChatModel(prompt -> respond(QUIZ_JSON, MAX_TOKENS - 1)))
                 .generateQuiz(REQUEST);
 
-        assertThat(quiz.concepts()).hasSize(1);
+        assertThat(quiz.questions()).hasSize(1);
     }
 }

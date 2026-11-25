@@ -85,7 +85,7 @@ public class LlmQuizGenerationAdapter implements QuizGenerationPort {
         Usage usage = result.response().getMetadata().getUsage();
 
         int outputTokens = usage.getCompletionTokens();
-        boolean noContent = quiz == null || quiz.concepts() == null || quiz.concepts().isEmpty();
+        boolean noContent = quiz == null || quiz.questions() == null || quiz.questions().isEmpty();
         boolean hitLimit = outputTokens >= maxTokens;
 
         // 잘린 응답은 모델마다 다르게 온다. luna 는 빈 문자열이나 끊긴 JSON 에 finish_reason=length 를 주지만,

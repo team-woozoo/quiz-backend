@@ -1,5 +1,7 @@
 package com.woozoo.quiz.quiz.application;
 
+import com.woozoo.quiz.ConceptFixture;
+import com.woozoo.quiz.concept.persistence.MaterialConceptRepository;
 import com.woozoo.quiz.SyncTaskExecutorConfiguration;
 import com.woozoo.quiz.TestcontainersConfiguration;
 import com.woozoo.quiz.auth.domain.NewUser;
@@ -14,7 +16,6 @@ import com.woozoo.quiz.quiz.domain.Difficulty;
 import com.woozoo.quiz.quiz.domain.GenerationJob;
 import com.woozoo.quiz.quiz.domain.GenerationStatus;
 import com.woozoo.quiz.quiz.domain.QuizFormat;
-import com.woozoo.quiz.quiz.port.GeneratedConcept;
 import com.woozoo.quiz.quiz.port.GeneratedOption;
 import com.woozoo.quiz.quiz.port.GeneratedQuestion;
 import com.woozoo.quiz.quiz.port.GeneratedQuiz;
@@ -36,6 +37,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 // 생성기가 실패하거나 쓸 수 없는 결과를 줄 때, 작업이 알맞은 코드로 FAILED 가 되고 퀴즈는 남지 않는지 본다
 @Import({TestcontainersConfiguration.class, SyncTaskExecutorConfiguration.class})
@@ -54,6 +57,8 @@ class QuizGenerationFailureTest {
     @Autowired
     MaterialRepository materialRepository;
     @Autowired
+    MaterialConceptRepository materialConceptRepository;
+    @Autowired
     JdbcClient jdbcClient;
     @Autowired
     ApplicationEvents applicationEvents;
@@ -66,6 +71,7 @@ class QuizGenerationFailureTest {
         userId = userRepository.save(new NewUser("failure@test.com", "1234", "홍길동"));
         materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30, null));
         materialRepository.saveChunks(materialId, List.of(new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다.")));
+        ConceptFixture.conceptPerChunk(materialRepository, materialConceptRepository, materialId);
     }
 
     private GenerationJob requestAndGetJob() {
@@ -93,13 +99,26 @@ class QuizGenerationFailureTest {
         assertThat(quizCount()).isZero();
     }
 
+    // 업로드 분석 전에 올린 자료는 개념이 없어, 생성기를 부르지 않고 바로 실패한다
+    @Test
+    void 개념이_없는_자료는_생성기를_부르지_않고_NO_VALID_QUESTIONS_가_된다() {
+        jdbcClient.sql("DELETE FROM material_concept WHERE material_id = :materialId")
+                .param("materialId", materialId)
+                .update();
+
+        GenerationJob job = requestAndGetJob();
+
+        assertThat(job.status()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(job.errorCode()).isEqualTo(ErrorCode.NO_VALID_QUESTIONS.name());
+        verify(quizGenerationPort, never()).generateQuiz(any());
+    }
+
     @Test
     void 검증을_통과한_문제가_없으면_NO_VALID_QUESTIONS_가_된다() {
         // 인용문이 원문에 없어 검증에서 모두 버려진다
-        GeneratedQuestion madeUp = new GeneratedQuestion("문제", "강의에 없는 문장", CognitiveType.REMEMBER, "해설",
+        GeneratedQuestion madeUp = new GeneratedQuestion(1, "문제", "강의에 없는 문장", CognitiveType.REMEMBER, "해설",
                 List.of(new GeneratedOption("O", true), new GeneratedOption("X", false)), 1);
-        given(quizGenerationPort.generateQuiz(any())).willReturn(new GeneratedQuiz(List.of(
-                new GeneratedConcept("TCP", "설명", List.of(1), List.of(madeUp)))));
+        given(quizGenerationPort.generateQuiz(any())).willReturn(new GeneratedQuiz(List.of(madeUp)));
 
         GenerationJob job = requestAndGetJob();
 

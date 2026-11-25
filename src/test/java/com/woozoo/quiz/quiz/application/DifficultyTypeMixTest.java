@@ -1,5 +1,7 @@
 package com.woozoo.quiz.quiz.application;
 
+import com.woozoo.quiz.ConceptFixture;
+import com.woozoo.quiz.concept.persistence.MaterialConceptRepository;
 import com.woozoo.quiz.SyncTaskExecutorConfiguration;
 import com.woozoo.quiz.TestcontainersConfiguration;
 import com.woozoo.quiz.auth.domain.NewUser;
@@ -52,6 +54,8 @@ class DifficultyTypeMixTest {
     UserRepository userRepository;
     @Autowired
     MaterialRepository materialRepository;
+    @Autowired
+    MaterialConceptRepository materialConceptRepository;
 
     long userId;
     long materialId;
@@ -61,6 +65,7 @@ class DifficultyTypeMixTest {
         userId = userRepository.save(new NewUser("mix@test.com", "1234", "홍길동"));
         materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 1, null));
         materialRepository.saveChunks(materialId, List.of(new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다.")));
+        ConceptFixture.conceptPerChunk(materialRepository, materialConceptRepository, materialId);
         given(quizGenerationPort.generateQuiz(any())).willThrow(new QuizGenerationException("확인만 한다"));
     }
 

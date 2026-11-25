@@ -84,7 +84,7 @@ class MaterialStudyRepositoryTest {
     }
 
     private long concept(String name, int... pages) {
-        long conceptId = materialConceptRepository.findOrCreate(materialId, name, "설명");
+        long conceptId = materialConceptRepository.save(materialId, name, "설명", List.of());
         for (int page : pages) {
             materialConceptRepository.linkChunk(conceptId, chunkIdByPage.get(page));
         }

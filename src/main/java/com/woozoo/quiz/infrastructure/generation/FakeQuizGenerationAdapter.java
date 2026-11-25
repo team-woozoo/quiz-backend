@@ -37,24 +37,31 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
             quotes.put(seq, quote);
         }
 
-        int count = Math.min(request.questionCount(), chunks.size());
-        List<GeneratedConcept> concepts = new ArrayList<>();
-
-        for (int i = 0; i < count; i++) {
-            SourceChunk chunk = chunks.get(i);
-            GeneratedQuestion question = switch (request.format()) {
-                case OX -> oxQuestion(chunk, quotes.get(chunk.seq()));
-                case MULTIPLE_CHOICE -> multipleChoiceQuestion(chunk, quotes);
-            };
-            // 약점 퀴즈면 실제 생성기처럼 겨냥한 개념 이름으로 낸다. 같은 이름은 검증기가 하나로 합친다
-            String conceptName = request.focus() == null ? chunk.seq() + "번 청크 내용" : request.focus().name();
-            concepts.add(new GeneratedConcept(
-                    conceptName,
-                    quotes.get(chunk.seq()),
-                    List.of(chunk.seq()),
-                    List.of(question)));
+        // 실제 생성기처럼 받은 개념의 번호로 가리키고, 근거 청크는 그 개념의 페이지에서 고른다.
+        // 약점 퀴즈는 겨냥한 개념 하나가 보낸 페이지를 모두 가져 모든 문제가 1번이 된다.
+        // 한 청크가 여러 개념에 들어 있으면 앞 번호를 쓰고, 개념에 속하지 않은 청크(표지 등)로는 문제를 내지 않는다
+        Map<Integer, Integer> conceptNoBySeq = new HashMap<>();
+        for (AssignedConcept concept : request.assignedConcepts()) {
+            for (int seq : concept.chunkSeqs()) {
+                conceptNoBySeq.putIfAbsent(seq, concept.no());
+            }
         }
-        return new GeneratedQuiz(concepts);
+
+        List<GeneratedQuestion> questions = new ArrayList<>();
+        for (SourceChunk chunk : chunks) {
+            if (questions.size() >= request.questionCount()) {
+                break;
+            }
+            Integer conceptNo = conceptNoBySeq.get(chunk.seq());
+            if (conceptNo == null) {
+                continue;
+            }
+            questions.add(switch (request.format()) {
+                case OX -> oxQuestion(conceptNo, chunk, quotes.get(chunk.seq()));
+                case MULTIPLE_CHOICE -> multipleChoiceQuestion(conceptNo, chunk, quotes);
+            });
+        }
+        return new GeneratedQuiz(questions);
     }
 
     private void waitForDelay() {
@@ -69,9 +76,10 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
         }
     }
 
-    private GeneratedQuestion oxQuestion(SourceChunk chunk, String quote) {
+    private GeneratedQuestion oxQuestion(int conceptNo, SourceChunk chunk, String quote) {
 
-        return new GeneratedQuestion("다음 내용은 강의자료와 맞다: " + quote,
+        return new GeneratedQuestion(conceptNo,
+                "다음 내용은 강의자료와 맞다: " + quote,
                 quote,
                 CognitiveType.REMEMBER,
                 "강의 자료에 그대로 나오는 문장이다",
@@ -80,7 +88,7 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
                 chunk.seq());
     }
 
-    private GeneratedQuestion multipleChoiceQuestion(SourceChunk chunk, Map<Integer, String> quotes) {
+    private GeneratedQuestion multipleChoiceQuestion(int conceptNo, SourceChunk chunk, Map<Integer, String> quotes) {
         int optionCount = QuizFormat.MULTIPLE_CHOICE.optionCount();
         String answer = quotes.get(chunk.seq());
 
@@ -112,6 +120,7 @@ public class FakeQuizGenerationAdapter implements QuizGenerationPort {
         options.add(answerIndex, new GeneratedOption(answer, true));
 
         return new GeneratedQuestion(
+                conceptNo,
                 "다음 중 강의자료에 나오는 문장은?",
                 answer,
                 CognitiveType.REMEMBER,

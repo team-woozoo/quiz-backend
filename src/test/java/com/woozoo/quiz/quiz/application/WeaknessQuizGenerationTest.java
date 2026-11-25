@@ -22,7 +22,6 @@ import com.woozoo.quiz.quiz.domain.QuizFormat;
 import com.woozoo.quiz.quiz.domain.QuizKind;
 import com.woozoo.quiz.quiz.domain.SourceScope;
 import com.woozoo.quiz.quiz.persistence.QuizRepository;
-import com.woozoo.quiz.quiz.port.GeneratedConcept;
 import com.woozoo.quiz.quiz.port.GeneratedOption;
 import com.woozoo.quiz.quiz.port.GeneratedQuestion;
 import com.woozoo.quiz.quiz.port.GeneratedQuiz;
@@ -96,27 +95,29 @@ class WeaknessQuizGenerationTest {
         List<StoredChunk> chunks = materialRepository.findChunks(materialId);
         chunkIdByPage = Map.of(1, chunks.get(0).id(), 3, chunks.get(1).id(), 4, chunks.get(2).id());
 
-        tcp = materialConceptRepository.findOrCreate(materialId, "TCP 연결 과정", "연결을 맺고 끊는 과정");
+        tcp = materialConceptRepository.save(materialId, "TCP 연결 과정", "연결을 맺고 끊는 과정", List.of());
         materialConceptRepository.linkChunk(tcp, chunkIdByPage.get(1));
         materialConceptRepository.linkChunk(tcp, chunkIdByPage.get(4));
-        udp = materialConceptRepository.findOrCreate(materialId, "UDP 특징", "비연결형 전송");
+        udp = materialConceptRepository.save(materialId, "UDP 특징", "비연결형 전송", List.of());
         materialConceptRepository.linkChunk(udp, chunkIdByPage.get(3));
     }
 
     // 기본 판정기는 모두 REMEMBER 로 판정하므로, 판정에서 떨어지지 않게 같은 유형을 붙인다
     private static GeneratedQuestion question(String content, String quote, int seq) {
-        return new GeneratedQuestion(content, quote, CognitiveType.REMEMBER, "해설",
+        return question(1, content, quote, seq);
+    }
+
+    private static GeneratedQuestion question(int conceptNo, String content, String quote, int seq) {
+        return new GeneratedQuestion(conceptNo, content, quote, CognitiveType.REMEMBER, "해설",
                 List.of(new GeneratedOption("O", true), new GeneratedOption("X", false)), seq);
     }
 
-    // 보낸 번호로 겨냥한 개념의 문제 둘과, 같은 페이지에 있는 다른 개념의 문제 하나를 돌려준다
+    // 겨냥한 개념(1번)의 문제 둘과, 같은 페이지에 있는 다른 개념을 가리킨 문제 하나를 돌려준다
     private void generatorAnswersWithOtherConceptMixedIn() {
         given(quizGenerationPort.generateQuiz(any())).willReturn(new GeneratedQuiz(List.of(
-                new GeneratedConcept("TCP 연결 과정", "연결을 맺고 끊는 과정", List.of(1, 2), List.of(
-                        question("1쪽 문제", PAGE_1, 1),
-                        question("4쪽 문제", PAGE_4, 2))),
-                new GeneratedConcept("연결 지향", "다른 개념", List.of(1), List.of(
-                        question("다른 개념 문제", PAGE_1, 1))))));
+                question(1, "1쪽 문제", PAGE_1, 1),
+                question(1, "4쪽 문제", PAGE_4, 2),
+                question(2, "다른 개념 문제", PAGE_1, 1))));
     }
 
     private GenerationJob requestWeakness(long conceptId) {
@@ -150,7 +151,12 @@ class WeaknessQuizGenerationTest {
         assertThat(request.questionCount()).isEqualTo(weaknessQuestionCount);
         assertThat(request.cognitiveTypeCounts().values().stream().mapToInt(Integer::intValue).sum())
                 .isEqualTo(weaknessQuestionCount);
-        assertThat(request.existingConcepts()).isEmpty();
+        // 겨냥한 개념 하나를 1번으로 두고, 보낸 페이지를 모두 그 개념의 범위로 넘긴다
+        assertThat(request.assignedConcepts()).singleElement().satisfies(concept -> {
+            assertThat(concept.no()).isEqualTo(1);
+            assertThat(concept.name()).isEqualTo("TCP 연결 과정");
+            assertThat(concept.chunkSeqs()).containsExactly(1, 2);
+        });
         assertThat(request.focus().name()).isEqualTo("TCP 연결 과정");
         assertThat(request.focus().description()).isEqualTo("연결을 맺고 끊는 과정");
         assertThat(request.focus().askedQuestions()).containsExactly("이미 낸 TCP 문제 2", "이미 낸 TCP 문제 1");
@@ -172,7 +178,7 @@ class WeaknessQuizGenerationTest {
     @Test
     void 페이지가_적은_개념은_페이지_수에_맞춰_문제를_덜_요청한다() {
         given(quizGenerationPort.generateQuiz(any())).willReturn(new GeneratedQuiz(List.of(
-                new GeneratedConcept("UDP 특징", "비연결형 전송", List.of(1), List.of(question("3쪽 문제", PAGE_3, 1))))));
+                question("3쪽 문제", PAGE_3, 1))));
 
         requestWeakness(udp);
 
@@ -268,10 +274,10 @@ class WeaknessQuizGenerationTest {
                 .isEqualTo(ErrorCode.DAILY_GENERATION_LIMIT_EXCEEDED);
     }
 
-    // 생성 결과에서 개념의 페이지가 모두 빠졌을 수 있다. 보낼 페이지가 없으면 생성기를 부르지 않는다
+    // 개념에 이어진 페이지가 없을 수 있다(업로드 분석 전에 생긴 개념 등). 보낼 페이지가 없으면 생성기를 부르지 않는다
     @Test
     void 나온_페이지가_없는_개념이면_생성기를_부르지_않고_NO_VALID_QUESTIONS_로_실패한다() {
-        long pageless = materialConceptRepository.findOrCreate(materialId, "페이지 없는 개념", "설명");
+        long pageless = materialConceptRepository.save(materialId, "페이지 없는 개념", "설명", List.of());
 
         GenerationJob job = requestWeakness(pageless);
 

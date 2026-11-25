@@ -1,16 +1,18 @@
 package com.woozoo.quiz.infrastructure.generation;
 
+import com.woozoo.quiz.concept.domain.ConceptTag;
 import com.woozoo.quiz.quiz.domain.CognitiveType;
+import com.woozoo.quiz.quiz.port.AssignedConcept;
 import com.woozoo.quiz.quiz.port.ConceptFocus;
-import com.woozoo.quiz.quiz.port.ExistingConcept;
 import com.woozoo.quiz.quiz.port.QuizGenerationRequest;
 import com.woozoo.quiz.quiz.port.SourceChunk;
 
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 // 요청마다 LLM 에 보낼 user 메시지를 만든다. 규칙은 system 프롬프트(prompts/quiz-generation-system.md)에 있고,
-// 여기에는 이번 요청의 조건, 기존 개념(약점 퀴즈면 겨냥한 개념과 이미 낸 문제), 강의 자료만 넣는다.
+// 여기에는 이번 요청의 조건, 배정한 개념(약점 퀴즈면 겨냥한 개념과 이미 낸 문제), 강의 자료만 넣는다.
 // 태그는 모델이 구획을 나눠 읽게 하는 표시일 뿐 XML 로 파싱하지 않는다. 그래서 원문을 이스케이프하지 않는다.
 // 이스케이프하면 모델이 바뀐 글자를 인용해 원문 대조에서 떨어진다
 final class QuizGenerationUserMessage {
@@ -23,7 +25,7 @@ final class QuizGenerationUserMessage {
         StringBuilder message = new StringBuilder();
         appendConditions(message, request);
         if (request.focus() == null) {
-            appendExistingConcepts(message, request);
+            appendConcepts(message, request);
         } else {
             appendFocus(message, request.focus());
         }
@@ -53,16 +55,32 @@ final class QuizGenerationUserMessage {
                 .append('\n');
     }
 
-    // 빈 태그만 두면 모델이 무엇을 기대하는지 헷갈릴 수 있어, 없으면 없다고 적는다
-    private static void appendExistingConcepts(StringBuilder message, QuizGenerationRequest request) {
-        message.append("<existing_concepts>\n");
-        if (request.existingConcepts().isEmpty()) {
-            message.append("없음\n");
+    // 생성기는 개념을 만들지 않고 이 목록의 no 로 가리킨다. 번호, 청크, 태그, 문제 수는 짧은 값이라 속성에 두고,
+    // 쉼표나 따옴표가 들어갈 수 있는 이름과 설명은 줄로 둔다. 값은 system 프롬프트가 설명한 이름 그대로 쓴다
+    private static void appendConcepts(StringBuilder message, QuizGenerationRequest request) {
+        message.append("<concepts>\n");
+        for (AssignedConcept concept : request.assignedConcepts()) {
+            message.append("<concept no=\"").append(concept.no())
+                    .append("\" chunkSeqs=\"").append(joined(concept.chunkSeqs()))
+                    .append("\" tags=\"").append(tagsOf(concept.tags()))
+                    .append("\" questionCount=\"").append(concept.questionCount()).append("\">\n")
+                    .append("name: ").append(concept.name()).append('\n')
+                    .append("description: ").append(concept.description()).append('\n')
+                    .append("</concept>\n");
         }
-        for (ExistingConcept concept : request.existingConcepts()) {
-            message.append("- ").append(concept.name()).append(": ").append(concept.description()).append('\n');
+        message.append("</concepts>\n\n");
+    }
+
+    private static String joined(List<Integer> chunkSeqs) {
+        return chunkSeqs.stream().map(String::valueOf).collect(Collectors.joining(","));
+    }
+
+    // 빈 값만 두면 모델이 무엇을 기대하는지 헷갈릴 수 있어, 태그가 없으면 없다고 적는다
+    private static String tagsOf(List<ConceptTag> tags) {
+        if (tags.isEmpty()) {
+            return "없음";
         }
-        message.append("</existing_concepts>\n\n");
+        return tags.stream().map(ConceptTag::name).collect(Collectors.joining(","));
     }
 
     // 약점 퀴즈는 개념 하나로만 내고, 이미 낸 문제는 피할 목록으로 준다. 근거로 쓰지 않게 원문과 다른 태그에 둔다

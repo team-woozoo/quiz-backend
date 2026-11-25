@@ -1,6 +1,7 @@
 package com.woozoo.quiz.quiz.application;
 
 import com.woozoo.quiz.concept.domain.ConceptPage;
+import com.woozoo.quiz.concept.domain.MaterialConcept;
 import com.woozoo.quiz.concept.domain.UserConcept;
 import com.woozoo.quiz.concept.persistence.MaterialConceptRepository;
 import com.woozoo.quiz.concept.persistence.UserConceptRepository;
@@ -16,7 +17,7 @@ import com.woozoo.quiz.quiz.domain.SourceScope;
 import com.woozoo.quiz.quiz.persistence.GenerationJobRepository;
 import com.woozoo.quiz.quiz.persistence.QuizRepository;
 import com.woozoo.quiz.quiz.port.ConceptFocus;
-import com.woozoo.quiz.quiz.port.ExistingConcept;
+import com.woozoo.quiz.quiz.port.AssignedConcept;
 import com.woozoo.quiz.quiz.port.GeneratedQuiz;
 import com.woozoo.quiz.quiz.port.QuizGenerationException;
 import com.woozoo.quiz.quiz.port.QuizGenerationPort;
@@ -126,15 +127,34 @@ public class QuizGenerationWorker {
             runWeakness(job);
             return;
         }
-        List<StoredChunk> chunks = materialRepository.findChunks(job.materialId());
 
-        QuizGenerationRequest request = new QuizGenerationRequest(
+        List<StoredChunk> chunks = materialRepository.findChunks(job.materialId());
+        List<MaterialConcept> concepts = materialConceptRepository.findForGeneration(job.materialId());
+        // 업로드 분석 전에 올린 자료는 개념이 없어 생성기가 문제를 붙일 곳이 없다. 생성기를 부르지 않고 바로 실패로 끝낸다
+        if (concepts.isEmpty()) {
+            throw new BusinessException(ErrorCode.NO_VALID_QUESTIONS);
+        }
+
+        // 생성기는 개념을 요청 안의 번호로 가리키고, 저장은 개념 id 로 한다.
+        // 번호를 두 곳에서 따로 매기면 어긋날 수 있어, 배정 개념과 대응 표를 이 반복 하나에서 만든다
+        Map<Integer, Long> conceptIdByNo = new HashMap<>();
+        List<AssignedConcept> assignedConcepts = new ArrayList<>();
+
+        int no = 1;
+        for (MaterialConcept concept : concepts) {
+            assignedConcepts.add(new AssignedConcept(no, concept.name(), concept.description(),
+                    concept.chunkSeqs(), concept.tags(), concept.questionCount()));
+            conceptIdByNo.put(no, concept.id());
+            no++;
+        }
+
+        QuizGenerationRequest request = QuizGenerationRequest.forNormal(
                 chunks.stream().map(chunk -> new SourceChunk(chunk.seq(), chunk.content())).toList(),
                 job.format(),
                 job.difficulty(),
                 questionCount,
                 cognitiveTypeCountsByDifficulty.get(job.difficulty()),
-                findExistingConcepts(job.materialId()),
+                assignedConcepts,
                 // 지금은 HARD 일반 퀴즈만 심화 문제로 낸다. 심화를 끄면 HARD 도 근거 문제로 낸다
                 job.difficulty() == Difficulty.HARD && extendedEnabled ? SourceScope.EXTENDED : SourceScope.GROUNDED
         );
@@ -144,7 +164,7 @@ public class QuizGenerationWorker {
         // AI 는 청크를 seq 로 가리키고 DB 는 id 로 잇는다
         Map<Integer, Long> chunkIdBySeq = chunks.stream()
                 .collect(Collectors.toMap(StoredChunk::seq, StoredChunk::id));
-        quizWriter.save(job, validated, chunkIdBySeq);
+        quizWriter.save(job, validated, chunkIdBySeq, conceptIdByNo);
     }
 
     // 대표 개념이 나온 페이지만 보내 그 개념으로 문제를 낸다.
@@ -176,16 +196,14 @@ public class QuizGenerationWorker {
 
         // 개념의 페이지가 적으면 같은 사실을 돌려 쓰거나 이름표를 부풀려 개수를 채운다. 페이지 수에 맞춰 덜 낸다
         int questionCount = Math.min(weaknessQuestionCount, chunks.size() * weaknessQuestionsPerPage);
-        QuizGenerationRequest request = new QuizGenerationRequest(
+
+        QuizGenerationRequest request = QuizGenerationRequest.forWeakness(
                 chunks,
                 job.format(),
                 job.difficulty(),
                 questionCount,
                 CognitiveMix.limitTo(weaknessCognitiveTypeCounts, questionCount),
-                List.of(),
-                new ConceptFocus(concept.name(), concept.description(), askedQuestions),
-                // HARD 여도 근거 문제로 낸다. 심화 프롬프트는 개념 하나로만 내는 방식을 아직 받쳐 주지 않는다
-                SourceScope.GROUNDED
+                new ConceptFocus(concept.name(), concept.description(), askedQuestions)
         );
 
         GeneratedQuiz validated = generateAndValidate(request);
@@ -198,16 +216,10 @@ public class QuizGenerationWorker {
         GeneratedQuiz validated = generatedQuizValidator.validate(request, generated);
         GeneratedQuiz judged = questionTypeJudger.keepMatched(request.chunks(), validated);
 
-        if (judged.concepts().isEmpty()) {
+        if (judged.questions().isEmpty()) {
             throw new BusinessException(ErrorCode.NO_VALID_QUESTIONS);
         }
         return judged;
-    }
-
-    private List<ExistingConcept> findExistingConcepts(long materialId) {
-        return materialConceptRepository.findByMaterialId(materialId).stream()
-                .map(concept -> new ExistingConcept(concept.name(), concept.description()))
-                .toList();
     }
 
     private void fail(long jobId, ErrorCode errorCode) {

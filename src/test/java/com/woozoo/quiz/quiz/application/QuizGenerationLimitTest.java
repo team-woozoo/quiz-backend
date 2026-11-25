@@ -1,5 +1,7 @@
 package com.woozoo.quiz.quiz.application;
 
+import com.woozoo.quiz.ConceptFixture;
+import com.woozoo.quiz.concept.persistence.MaterialConceptRepository;
 import com.woozoo.quiz.SyncTaskExecutorConfiguration;
 import com.woozoo.quiz.TestcontainersConfiguration;
 import com.woozoo.quiz.auth.domain.NewUser;
@@ -56,6 +58,8 @@ class QuizGenerationLimitTest {
     @Autowired
     MaterialRepository materialRepository;
     @Autowired
+    MaterialConceptRepository materialConceptRepository;
+    @Autowired
     JdbcClient jdbcClient;
     @Value("${quiz.generation.daily-limit}")
     int dailyLimit;
@@ -70,6 +74,7 @@ class QuizGenerationLimitTest {
         materialRepository.saveChunks(materialId, List.of(
                 new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다."),
                 new MaterialChunk(2, 2, "UDP는 비연결형 프로토콜이다.")));
+        ConceptFixture.conceptPerChunk(materialRepository, materialConceptRepository, materialId);
     }
 
     private long request() {

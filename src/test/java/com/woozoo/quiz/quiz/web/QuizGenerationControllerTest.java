@@ -1,5 +1,6 @@
 package com.woozoo.quiz.quiz.web;
 
+import com.woozoo.quiz.ConceptFixture;
 import com.jayway.jsonpath.JsonPath;
 import com.woozoo.quiz.SyncTaskExecutorConfiguration;
 import com.woozoo.quiz.TestcontainersConfiguration;
@@ -71,6 +72,7 @@ class QuizGenerationControllerTest {
         materialRepository.saveChunks(materialId, List.of(
                 new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다."),
                 new MaterialChunk(2, 2, "UDP는 비연결형 프로토콜이다.")));
+        ConceptFixture.conceptPerChunk(materialRepository, materialConceptRepository, materialId);
     }
 
     private ResultActions requestGeneration(String token, long materialId, String body) throws Exception {
@@ -188,7 +190,7 @@ class QuizGenerationControllerTest {
 
     // 가짜 생성기는 개념이 나온 페이지마다 문제 하나를 만든다
     private long tcpConceptOnBothPages() {
-        long conceptId = materialConceptRepository.findOrCreate(materialId, "TCP", "연결 지향 전송");
+        long conceptId = materialConceptRepository.save(materialId, "TCP", "연결 지향 전송", List.of());
         materialRepository.findChunks(materialId)
                 .forEach(chunk -> materialConceptRepository.linkChunk(conceptId, chunk.id()));
         return conceptId;

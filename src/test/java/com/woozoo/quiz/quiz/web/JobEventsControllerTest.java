@@ -1,5 +1,7 @@
 package com.woozoo.quiz.quiz.web;
 
+import com.woozoo.quiz.ConceptFixture;
+import com.woozoo.quiz.concept.persistence.MaterialConceptRepository;
 import com.jayway.jsonpath.JsonPath;
 import com.woozoo.quiz.SyncTaskExecutorConfiguration;
 import com.woozoo.quiz.TestcontainersConfiguration;
@@ -56,6 +58,8 @@ class JobEventsControllerTest {
     @Autowired
     MaterialRepository materialRepository;
     @Autowired
+    MaterialConceptRepository materialConceptRepository;
+    @Autowired
     GenerationJobRepository generationJobRepository;
     @Autowired
     JobEmitterRegistry jobEmitterRegistry;
@@ -75,6 +79,7 @@ class JobEventsControllerTest {
 
         materialId = materialRepository.save(new NewMaterial(ownerId, "네트워크 5강", "05.pdf", FileType.PDF, 30, null));
         materialRepository.saveChunks(materialId, List.of(new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다.")));
+        ConceptFixture.conceptPerChunk(materialRepository, materialConceptRepository, materialId);
     }
 
     // 생성기를 거치지 않고 PENDING 작업만 만든다. 상태는 테스트가 직접 바꾼다

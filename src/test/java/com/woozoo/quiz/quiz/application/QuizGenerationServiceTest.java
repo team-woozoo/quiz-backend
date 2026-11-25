@@ -1,5 +1,7 @@
 package com.woozoo.quiz.quiz.application;
 
+import com.woozoo.quiz.ConceptFixture;
+import com.woozoo.quiz.concept.persistence.MaterialConceptRepository;
 import com.woozoo.quiz.SyncTaskExecutorConfiguration;
 import com.woozoo.quiz.TestcontainersConfiguration;
 import com.woozoo.quiz.auth.domain.NewUser;
@@ -44,6 +46,8 @@ class QuizGenerationServiceTest {
     @Autowired
     MaterialRepository materialRepository;
     @Autowired
+    MaterialConceptRepository materialConceptRepository;
+    @Autowired
     JdbcClient jdbcClient;
     @Autowired
     ApplicationEvents applicationEvents;
@@ -61,6 +65,7 @@ class QuizGenerationServiceTest {
                 new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다.\n신뢰성 있는 전송을 보장한다."),
                 new MaterialChunk(2, 2, "UDP는 비연결형 프로토콜이다.\n순서를 보장하지 않는다."),
                 new MaterialChunk(3, 3, "IP는 패킷을 목적지까지 전달한다.\n경로를 고른다.")));
+        ConceptFixture.conceptPerChunk(materialRepository, materialConceptRepository, materialId);
     }
 
     private long request(QuizFormat format) {
@@ -119,12 +124,20 @@ class QuizGenerationServiceTest {
     }
 
     @Test
-    void 같은_자료로_다시_만들면_기존_개념을_다시_쓴다() {
+    // 개념은 업로드 때 만들어 두므로, 퀴즈를 몇 번 만들어도 개념과 페이지 연결이 늘지 않는다
+    void 생성은_개념을_새로_만들지_않고_저장된_개념에_문제를_붙인다() {
         long firstQuizId = quizGenerationService.getJob(userId, request(QuizFormat.OX)).quizId();
         long secondQuizId = quizGenerationService.getJob(userId, request(QuizFormat.MULTIPLE_CHOICE)).quizId();
 
         assertThat(secondQuizId).isNotEqualTo(firstQuizId);
         assertThat(count("SELECT count(*) FROM material_concept WHERE material_id = :id", materialId)).isEqualTo(3);
+        // 문제는 모두 이 자료에 저장해 둔 개념에 붙는다
+        assertThat(count("""
+                SELECT count(*) FROM question q
+                JOIN quiz qz ON qz.id = q.quiz_id
+                JOIN material_concept mc ON mc.id = q.material_concept_id
+                WHERE q.quiz_id = :id AND mc.material_id = qz.material_id
+                """, firstQuizId)).isEqualTo(count("SELECT count(*) FROM question WHERE quiz_id = :id", firstQuizId));
         assertThat(count("""
                 SELECT count(*) FROM concept_chunk cc JOIN material_concept mc ON mc.id = cc.material_concept_id
                 WHERE mc.material_id = :id

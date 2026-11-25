@@ -12,30 +12,24 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 @Slf4j
 @Component
 public class GeneratedQuizValidator {
 
-    private static final int MAX_CONCEPT_NAME_LENGTH = 255;
     // 인용의 떨어진 조각을 잇는 표시다. 원문의 URL 이나 경로의 / 와 헷갈리지 않게 앞뒤 공백까지 본다
     private static final Pattern QUOTE_PART_SEPARATOR = Pattern.compile("\\s+/\\s+");
     private static final Pattern NOT_LETTER_OR_DIGIT = Pattern.compile("[^\\p{L}\\p{N}]");
 
     // 문제를 버린 이유. 프롬프트를 고칠 때 어느 규칙에서 많이 떨어지는지 보려고 센다
     enum Rejection {
-        INVALID_CONCEPT,
-        OUTSIDE_FOCUS,
-        NO_KNOWN_CHUNK,
         NULL_QUESTION,
+        UNKNOWN_CONCEPT,
         OPTION_COUNT,
         MISSING_FIELD,
         ANSWER_COUNT,
@@ -44,78 +38,50 @@ public class GeneratedQuizValidator {
         QUOTE_NOT_IN_SOURCE
     }
 
+    // 생성기는 개념을 만들지 않고 요청에 보낸 개념을 번호로 가리킨다. 그래서 개념을 다듬을 일 없이 문제 하나하나만 본다.
+    // 약점 퀴즈도 겨냥한 개념 하나를 1번으로 보내므로 같은 규칙으로 걸러진다
     public GeneratedQuiz validate(QuizGenerationRequest request, GeneratedQuiz quiz) {
         // 원문은 청크마다 한 번만 정리해 둔다. 그래서 isQuoteInSource 에서는 인용문만 정리한다
-        Map<Integer,String> normalizedContentBySeq = new HashMap<>();
-        List<SourceChunk> chunks = request.chunks();
-        for (SourceChunk chunk : chunks) {
-            String normalizedContent = normalize(chunk.content());
-            normalizedContentBySeq.put(chunk.seq(), normalizedContent);
+        Map<Integer, String> normalizedContentBySeq = new HashMap<>();
+        for (SourceChunk chunk : request.chunks()) {
+            normalizedContentBySeq.put(chunk.seq(), normalize(chunk.content()));
         }
-        List<GeneratedConcept> concepts = mergeSameName(quiz.concepts());
+        Map<Integer, AssignedConcept> conceptByNo = new HashMap<>();
+        for (AssignedConcept concept : request.assignedConcepts()) {
+            conceptByNo.put(concept.no(), concept);
+        }
 
-        List<GeneratedConcept> validConcepts = new ArrayList<>();
         // 이 컴포넌트는 여러 작업이 같이 쓰므로 개수는 필드가 아니라 호출마다 센다
         Map<Rejection, Integer> rejected = new EnumMap<>(Rejection.class);
         Map<CognitiveType, Integer> rejectedTypes = new EnumMap<>(CognitiveType.class);
         Map<CognitiveType, Integer> trimmedTypes = new EnumMap<>(CognitiveType.class);
 
-        for (GeneratedConcept concept : concepts) {
-            if (!isValidConcept(concept)) {
-                count(rejected, Rejection.INVALID_CONCEPT, concept.questions().size());
-                countTypes(rejectedTypes, concept.questions());
-                continue;
+        List<GeneratedQuestion> received = nullToEmpty(quiz.questions());
+        List<GeneratedQuestion> validQuestions = new ArrayList<>();
+        for (GeneratedQuestion question : received) {
+            Optional<Rejection> rejection =
+                    findRejection(question, request.format(), conceptByNo, normalizedContentBySeq);
+            if (rejection.isPresent()) {
+                rejected.merge(rejection.get(), 1, Integer::sum);
+                countTypes(rejectedTypes, Collections.singletonList(question));
+            } else {
+                validQuestions.add(question);
             }
-            if (!isInFocus(concept, request.focus())) {
-                count(rejected, Rejection.OUTSIDE_FOCUS, concept.questions().size());
-                countTypes(rejectedTypes, concept.questions());
-                continue;
-            }
-            // 보내지 않은 청크 번호는 빼 둔다. 그러면 문제의 근거가 이 목록에 있다는 것만으로 원문이 있다는 것까지 보장된다
-            List<Integer> chunkSeqs = concept.chunkSeqs().stream()
-                    .filter(normalizedContentBySeq::containsKey)
-                    .toList();
-            if (chunkSeqs.isEmpty()) {
-                count(rejected, Rejection.NO_KNOWN_CHUNK, concept.questions().size());
-                countTypes(rejectedTypes, concept.questions());
-                continue;
-            }
-
-            List<GeneratedQuestion> validQuestions = new ArrayList<>();
-            for (GeneratedQuestion question : concept.questions()) {
-                Optional<Rejection> rejection =
-                        findRejection(question, request.format(), chunkSeqs, normalizedContentBySeq);
-                if (rejection.isPresent()) {
-                    count(rejected, rejection.get(), 1);
-                    countTypes(rejectedTypes, Collections.singletonList(question));
-                } else {
-                    validQuestions.add(question);
-                }
-            }
-            // 문제가 없는 개념은 약점 분석에 빈 개념으로 남기만 해서 저장하지 않는다
-            if (validQuestions.isEmpty()) {
-                continue;
-            }
-
-            validConcepts.add(new GeneratedConcept(
-                    concept.name(), concept.description(), chunkSeqs, List.copyOf(validQuestions)));
         }
-        List<GeneratedConcept> keptConcepts = trimToQuestionCount(validConcepts, request, trimmedTypes);
-        logResult(quiz, keptConcepts, rejected, rejectedTypes, trimmedTypes);
-        return new GeneratedQuiz(List.copyOf(keptConcepts));
+
+        List<GeneratedQuestion> kept = trimToQuestionCount(validQuestions, request, trimmedTypes);
+        logResult(received.size(), kept.size(), rejected, rejectedTypes, trimmedTypes);
+        return new GeneratedQuiz(List.copyOf(kept));
     }
 
-    // AI 는 요청보다 문제를 더 만들기도 한다. 개념 순서대로 자르면 자료 뒤쪽에 몰리는 고차원 유형이 잘려서,
+    // AI 는 요청보다 문제를 더 만들기도 한다. 앞에서부터 자르면 자료 뒤쪽에 몰리는 고차원 유형이 잘려서,
     // 목표 개수보다 많이 나온 유형의 문제를 뒤쪽부터 뺀다. 목표가 없는 유형은 목표가 0 이라 먼저 빠진다.
     // 넘친 유형이 없는데도 많으면(목표 합이 문제 수보다 작을 때) 뒤쪽부터 뺀다
-    private List<GeneratedConcept> trimToQuestionCount(List<GeneratedConcept> concepts, QuizGenerationRequest request,
+    private List<GeneratedQuestion> trimToQuestionCount(List<GeneratedQuestion> questions, QuizGenerationRequest request,
                                                        Map<CognitiveType, Integer> trimmedTypes) {
-        List<GeneratedQuestion> questions = concepts.stream()
-                .flatMap(concept -> concept.questions().stream())
-                .toList();
         int excess = questions.size() - request.questionCount();
         if (excess <= 0) {
-            return concepts;
+            return questions;
         }
         Map<CognitiveType, Integer> typeCounts = new EnumMap<>(CognitiveType.class);
         countTypes(typeCounts, questions);
@@ -135,30 +101,16 @@ public class GeneratedQuizValidator {
         }
         countTypes(trimmedTypes, List.copyOf(trimmed));
 
-        // 문제가 다 빠진 개념은 저장하지 않는다
-        List<GeneratedConcept> kept = new ArrayList<>();
-        for (GeneratedConcept concept : concepts) {
-            List<GeneratedQuestion> left = concept.questions().stream()
-                    .filter(question -> !trimmed.contains(question))
-                    .toList();
-            if (!left.isEmpty()) {
-                kept.add(new GeneratedConcept(concept.name(), concept.description(), concept.chunkSeqs(), left));
-            }
-        }
-        return kept;
-    }
-
-    private void count(Map<Rejection, Integer> rejected, Rejection rejection, int questionCount) {
-        if (questionCount > 0) {
-            rejected.merge(rejection, questionCount, Integer::sum);
-        }
+        return questions.stream()
+                .filter(question -> !trimmed.contains(question))
+                .toList();
     }
 
     // 유형을 모르는 문제(null)는 세지 않는다
-    private void countTypes(Map<CognitiveType, Integer> rejectedTypes, List<GeneratedQuestion> questions) {
+    private void countTypes(Map<CognitiveType, Integer> typeCounts, List<GeneratedQuestion> questions) {
         for (GeneratedQuestion question : questions) {
             if (question != null && question.cognitiveType() != null) {
-                rejectedTypes.merge(question.cognitiveType(), 1, Integer::sum);
+                typeCounts.merge(question.cognitiveType(), 1, Integer::sum);
             }
         }
     }
@@ -166,38 +118,26 @@ public class GeneratedQuizValidator {
     // 문제가 요청보다 적게 남았을 때, AI 가 적게 만든 것인지 검증에서 떨어진 것인지 가르려고 받은 수와 남긴 수를 같이 남긴다.
     // 어려운 유형일수록 검증에서 잘 떨어져, 어느 유형이 떨어졌는지도 같이 남긴다.
     // 강의 내용은 남기지 않고 개수만 남긴다. 요청보다 많이 와서 뺀 문제는 버린 것과 따로 센다
-    private void logResult(GeneratedQuiz received, List<GeneratedConcept> validConcepts,
-                           Map<Rejection, Integer> rejected, Map<CognitiveType, Integer> rejectedTypes,
-                           Map<CognitiveType, Integer> trimmedTypes) {
-        int receivedCount = nullToEmpty(received.concepts()).stream()
-                .filter(Objects::nonNull)
-                .mapToInt(concept -> nullToEmpty(concept.questions()).size())
-                .sum();
-        int keptCount = validConcepts.stream().mapToInt(concept -> concept.questions().size()).sum();
+    private void logResult(int receivedCount, int keptCount, Map<Rejection, Integer> rejected,
+                           Map<CognitiveType, Integer> rejectedTypes, Map<CognitiveType, Integer> trimmedTypes) {
         int rejectedCount = rejected.values().stream().mapToInt(Integer::intValue).sum();
         int trimmedCount = trimmedTypes.values().stream().mapToInt(Integer::intValue).sum();
         log.info("생성 결과 검증: 받은 문제 {}개, 남긴 문제 {}개, 버린 문제 {}개 {} 버린 유형 {}, 넘쳐서 뺀 문제 {}개 {}",
                 receivedCount, keptCount, rejectedCount, rejected, rejectedTypes, trimmedCount, trimmedTypes);
     }
 
-    // 약점 퀴즈는 보낸 페이지에 다른 개념도 함께 있어, 겨냥한 개념의 문제만 남긴다.
-    // 생성기가 띄어쓰기나 기호를 바꿔 쓸 수 있어 인용과 같이 글자와 숫자만 비교한다
-    private boolean isInFocus(GeneratedConcept concept, ConceptFocus focus) {
-        return focus == null || normalize(concept.name()).equalsIgnoreCase(normalize(focus.name()));
-    }
-
-    // 이름 빈 값은 mergeSameName 에서 이미 걸렀다. 이름은 VARCHAR(255) 라 넘으면 저장이 실패한다
-    private boolean isValidConcept(GeneratedConcept concept) {
-        return concept.name().length() <= MAX_CONCEPT_NAME_LENGTH
-                && !isBlank(concept.description());
-    }
-
     // 처음 걸린 규칙 하나를 이유로 돌려주고, 모두 통과하면 비어 있다.
     // 앞의 규칙이 null 을 막아 주는 순서다. 바꾸면 뒤의 규칙에서 NPE 가 날 수 있다
-    private Optional<Rejection> findRejection(GeneratedQuestion question, QuizFormat format, List<Integer> chunkSeqs,
+    private Optional<Rejection> findRejection(GeneratedQuestion question, QuizFormat format,
+                                              Map<Integer, AssignedConcept> conceptByNo,
                                               Map<Integer, String> normalizedContentBySeq) {
         if (question == null) {
             return Optional.of(Rejection.NULL_QUESTION);
+        }
+        // 보내지 않은 번호는 저장할 개념 id 가 없다
+        AssignedConcept concept = conceptByNo.get(question.conceptNo());
+        if (concept == null) {
+            return Optional.of(Rejection.UNKNOWN_CONCEPT);
         }
         if (!hasExpectedOptionCount(question.options(), format)) {
             return Optional.of(Rejection.OPTION_COUNT);
@@ -211,45 +151,13 @@ public class GeneratedQuizValidator {
         if (!hasDistinctOptions(question.options())) {
             return Optional.of(Rejection.DUPLICATE_OPTION);
         }
-        if (!isSourceInConcept(question.sourceChunkSeq(), chunkSeqs)) {
+        if (!isSourceInConcept(question.sourceChunkSeq(), concept.chunkSeqs(), normalizedContentBySeq)) {
             return Optional.of(Rejection.SOURCE_NOT_IN_CONCEPT);
         }
         if (!isQuoteInSource(question.sourceQuote(), normalizedContentBySeq.get(question.sourceChunkSeq()))) {
             return Optional.of(Rejection.QUOTE_NOT_IN_SOURCE);
         }
         return Optional.empty();
-    }
-
-    // 강의 앞뒤에 같은 개념이 나오면 AI가 이름이 같은 개념을 둘로 나눠 줄 수 있다.
-    // 하나를 버리면 그쪽 문제와 청크 연결이 같이 사라져서, 이름으로 묶어 하나로 합친다
-    private List<GeneratedConcept> mergeSameName(List<GeneratedConcept> concepts) {
-        Map<String, GeneratedConcept> mergedByName = new LinkedHashMap<>();
-
-        for (GeneratedConcept concept : nullToEmpty(concepts)) {
-            if (concept == null || isBlank(concept.name())) {
-                continue;
-            }
-            String name = concept.name().strip();
-            GeneratedConcept current = new GeneratedConcept(
-                    name,
-                    concept.description(),
-                    nullToEmpty(concept.chunkSeqs()).stream().distinct().toList(),
-                    nullToEmpty(concept.questions()));
-
-            mergedByName.merge(name, current, this::merge);
-        }
-        return List.copyOf(mergedByName.values());
-    }
-
-    // 설명은 먼저 나온 것을 쓴다. 청크 번호는 concept_chunk 기본 키가 겹치지 않게 중복을 뺀다
-    private GeneratedConcept merge(GeneratedConcept first, GeneratedConcept second) {
-        List<Integer> chunkSeqs = Stream.concat(first.chunkSeqs().stream(), second.chunkSeqs().stream())
-                .distinct()
-                .toList();
-        List<GeneratedQuestion> questions = Stream.concat(first.questions().stream(), second.questions().stream())
-                .toList();
-
-        return new GeneratedConcept(first.name(), first.description(), chunkSeqs, questions);
     }
 
     private <T> List<T> nullToEmpty(List<T> list) {
@@ -283,8 +191,10 @@ public class GeneratedQuizValidator {
         return text == null || text.isBlank();
     }
 
-    private boolean isSourceInConcept(int sourceChunkSeq, List<Integer> conceptChunkSeqs) {
-        return conceptChunkSeqs.contains(sourceChunkSeq);
+    // 근거 청크는 그 개념이 나오는 페이지여야 하고, 이번에 보낸 청크여야 원문과 인용을 대조할 수 있다
+    private boolean isSourceInConcept(int sourceChunkSeq, List<Integer> conceptChunkSeqs,
+                                      Map<Integer, String> normalizedContentBySeq) {
+        return conceptChunkSeqs.contains(sourceChunkSeq) && normalizedContentBySeq.containsKey(sourceChunkSeq);
     }
 
     // 모델은 원문 중간을 건너뛸 때 " / " 로 잇거나, 빈 줄이나 "..." 줄을 넣거나, 표시 없이 줄만 바꾼다.
