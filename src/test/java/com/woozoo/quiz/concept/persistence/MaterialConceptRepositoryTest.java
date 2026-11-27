@@ -1,5 +1,6 @@
 package com.woozoo.quiz.concept.persistence;
 
+import com.woozoo.quiz.TestHashes;
 import com.woozoo.quiz.TestcontainersConfiguration;
 import com.woozoo.quiz.auth.domain.NewUser;
 import com.woozoo.quiz.auth.persistence.UserRepository;
@@ -41,8 +42,8 @@ class MaterialConceptRepositoryTest {
     @BeforeEach
     void setup() {
         long userId = userRepository.save(new NewUser("concept@test.com", "1234", "홍길동"));
-        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30, null));
-        otherMaterialId = materialRepository.save(new NewMaterial(userId, "네트워크 6강", "06.pdf", FileType.PDF, 30, null));
+        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30, TestHashes.unique()));
+        otherMaterialId = materialRepository.save(new NewMaterial(userId, "네트워크 6강", "06.pdf", FileType.PDF, 30, TestHashes.unique()));
     }
 
     private long saveChunk(long materialId, int seq, int pageNo) {
@@ -72,18 +73,6 @@ class MaterialConceptRepositoryTest {
                 new MaterialConcept(udpId, "UDP", "비연결형 전송", List.of(), List.of(), 0));
     }
 
-    // 업로드 분석 전에 생긴 개념은 태그가 NULL 이다. 생성 쪽은 빈 목록으로 받아 NULL 을 다루지 않게 한다
-    @Test
-    void 태그가_NULL_인_개념은_빈_목록으로_조회한다() {
-        jdbcClient.sql("INSERT INTO material_concept (material_id, name, description) VALUES (:materialId, '예전 개념', '설명')")
-                .param("materialId", materialId)
-                .update();
-
-        assertThat(materialConceptRepository.findForGeneration(materialId))
-                .singleElement()
-                .satisfies(concept -> assertThat(concept.tags()).isEmpty());
-    }
-
     @Test
     void 분석한_개념을_태그와_함께_저장한다() {
         long id = materialConceptRepository.save(materialId, "TCP 연결", "연결 지향 전송",
@@ -99,7 +88,7 @@ class MaterialConceptRepositoryTest {
         assertThat(saved).isEqualTo("TCP 연결:연결 지향 전송:CONTRAST,RULE");
     }
 
-    // 빈 배열은 분석했지만 재료가 없다는 뜻이라, 분석 전 개념의 NULL 과 구분돼야 한다
+    // 재료가 없는 개념은 빈 배열이다. tags 는 NOT NULL 이라 빈 목록이 NULL 로 저장되면 업로드가 실패한다
     @Test
     void 태그가_없으면_빈_배열로_저장한다() {
         long id = materialConceptRepository.save(materialId, "TCP 연결", "연결 지향 전송", List.of());

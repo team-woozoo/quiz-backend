@@ -1,5 +1,6 @@
 package com.woozoo.quiz.material.persistence;
 
+import com.woozoo.quiz.TestHashes;
 import com.woozoo.quiz.TestcontainersConfiguration;
 import com.woozoo.quiz.material.domain.FileType;
 import com.woozoo.quiz.material.domain.MaterialChunk;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,7 +49,7 @@ class MaterialRepositoryTest {
     @Test
     void 자료를_저장하고_그_아이디로_조회한다(){
         NewMaterial newMaterial =
-                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null);
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, TestHashes.unique());
 
         long id = materialRepository.save(newMaterial);
 
@@ -66,7 +68,7 @@ class MaterialRepositoryTest {
     @Test
     void 청크가_순서대로_저장된다(){
         long materialId = materialRepository.save(
-                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null));
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, TestHashes.unique()));
 
         List<MaterialChunk> chunks = List.of(
                 new MaterialChunk(1,1,"first page"),
@@ -91,9 +93,9 @@ class MaterialRepositoryTest {
     @Test
     void 자료의_청크를_아이디와_함께_seq_순서로_조회한다() {
         long materialId = materialRepository.save(
-                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null));
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, TestHashes.unique()));
         long otherMaterialId = materialRepository.save(
-                new NewMaterial(ownerId, "운영체제 6강", "06.pdf", FileType.PDF, 30, null));
+                new NewMaterial(ownerId, "운영체제 6강", "06.pdf", FileType.PDF, 30, TestHashes.unique()));
 
         // 저장 순서와 seq 순서를 다르게 넣어 ORDER BY 를 확인한다
         materialRepository.saveChunks(materialId, List.of(
@@ -112,7 +114,7 @@ class MaterialRepositoryTest {
     @Test
     void 주인일_때만_자료가_있다고_답한다() {
         long materialId = materialRepository.save(
-                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null));
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, TestHashes.unique()));
 
         assertThat(materialRepository.existsByIdAndOwnerId(materialId, ownerId)).isTrue();
         assertThat(materialRepository.existsByIdAndOwnerId(materialId, ownerId + 1)).isFalse();
@@ -121,8 +123,8 @@ class MaterialRepositoryTest {
 
     @Test
     void 내_자료를_최근_것부터_페이지_수와_함께_조회한다() {
-        long older = materialRepository.save(new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null));
-        long newer = materialRepository.save(new NewMaterial(ownerId, "운영체제 6강", "06.pdf", FileType.PDF, 30, null));
+        long older = materialRepository.save(new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, TestHashes.unique()));
+        long newer = materialRepository.save(new NewMaterial(ownerId, "운영체제 6강", "06.pdf", FileType.PDF, 30, TestHashes.unique()));
         materialRepository.saveChunks(older, List.of(
                 new MaterialChunk(1, 1, "first page"),
                 new MaterialChunk(2, 2, "second page")));
@@ -133,7 +135,7 @@ class MaterialRepositoryTest {
                 """)
                 .query(Long.class)
                 .single();
-        materialRepository.save(new NewMaterial(otherOwnerId, "남의 자료", "other.pdf", FileType.PDF, 30, null));
+        materialRepository.save(new NewMaterial(otherOwnerId, "남의 자료", "other.pdf", FileType.PDF, 30, TestHashes.unique()));
 
         List<MaterialSummary> result = materialRepository.findSummariesByOwnerId(ownerId);
 
@@ -174,19 +176,18 @@ class MaterialRepositoryTest {
                 .hasMessageContaining("uq_material_owner_id_content_hash");
     }
 
-    // 해시가 없는 예전 자료끼리는 겹쳐도 된다
+    // 자료는 모두 업로드 때 해시를 갖는다. 해시 없이 저장하는 길이 생기면 중복 검사를 지나칠 수 있어 DB 가 막는다
     @Test
-    void 해시가_없는_자료는_여러_개_저장할_수_있다() {
-        materialRepository.save(new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null));
-        materialRepository.save(new NewMaterial(ownerId, "운영체제 6강", "06.pdf", FileType.PDF, 30, null));
-
-        assertThat(materialRepository.findSummariesByOwnerId(ownerId)).hasSize(2);
+    void 해시_없이는_자료를_저장할_수_없다() {
+        assertThatThrownBy(() -> materialRepository.save(
+                        new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null)))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
     void 청크가_없는_자료는_빈_목록을_돌려준다() {
         long materialId = materialRepository.save(
-                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, null));
+                new NewMaterial(ownerId, "운영체제 5강", "05.pdf", FileType.PDF, 30, TestHashes.unique()));
 
         assertThat(materialRepository.findChunks(materialId)).isEmpty();
     }

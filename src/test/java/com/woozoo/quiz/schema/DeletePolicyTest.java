@@ -1,5 +1,6 @@
 package com.woozoo.quiz.schema;
 
+import com.woozoo.quiz.TestHashes;
 
 import com.woozoo.quiz.TestcontainersConfiguration;
 import org.junit.jupiter.api.Test;
@@ -37,12 +38,12 @@ public class DeletePolicyTest {
         insert("INSERT INTO refresh_token (user_id, token_hash, expires_at) VALUES (?, ?, now() + interval '14 days') RETURNING id",
                 userId, "a".repeat(64));
 
-        Long materialId = insert("INSERT INTO material (owner_id, title, original_filename, file_type, total_page_count) VALUES (?, ?, ?, ?, 30) RETURNING id",
-                userId, "네트워크 3주차", "network-03.pdf", "PDF");
+        Long materialId = insert("INSERT INTO material (owner_id, title, original_filename, file_type, total_page_count, content_hash) VALUES (?, ?, ?, ?, 30, ?) RETURNING id",
+                userId, "네트워크 3주차", "network-03.pdf", "PDF", TestHashes.unique());
         Long chunkId = insert("INSERT INTO material_chunk (material_id, seq, page_no, content) VALUES (?, ?, ?, ?) RETURNING id",
                 materialId, 1, 1, "클라이언트는 먼저 SYN 패킷을 보낸다.");
 
-        Long materialConceptId = insert("INSERT INTO material_concept (material_id, name, description) VALUES (?, ?, ?) RETURNING id",
+        Long materialConceptId = insert("INSERT INTO material_concept (material_id, name, description, tags) VALUES (?, ?, ?, '{}') RETURNING id",
                 materialId, "TCP 연결 수립", "SYN, SYN-ACK, ACK 로 연결을 맺는 절차");
         execute("INSERT INTO concept_chunk (material_concept_id, material_chunk_id) VALUES (?, ?)",
                 materialConceptId, chunkId);
@@ -153,11 +154,11 @@ public class DeletePolicyTest {
     }
 
     private MaterialFixture insertMaterial(Long userId, String title) {
-        Long materialId = insert("INSERT INTO material (owner_id, title, original_filename, file_type, total_page_count) VALUES (?, ?, ?, 'PDF', 30) RETURNING id",
-                userId, title, title + ".pdf");
+        Long materialId = insert("INSERT INTO material (owner_id, title, original_filename, file_type, total_page_count, content_hash) VALUES (?, ?, ?, 'PDF', 30, ?) RETURNING id",
+                userId, title, title + ".pdf", TestHashes.unique());
         Long chunkId = insert("INSERT INTO material_chunk (material_id, seq, page_no, content) VALUES (?, 1, 1, ?) RETURNING id",
                 materialId, "클라이언트는 먼저 SYN 패킷을 보낸다.");
-        Long conceptId = insert("INSERT INTO material_concept (material_id, name, description) VALUES (?, ?, ?) RETURNING id",
+        Long conceptId = insert("INSERT INTO material_concept (material_id, name, description, tags) VALUES (?, ?, ?, '{}') RETURNING id",
                 materialId, "TCP 연결 수립", "SYN, SYN-ACK, ACK 로 연결을 맺는 절차");
         execute("INSERT INTO concept_chunk (material_concept_id, material_chunk_id) VALUES (?, ?)",
                 conceptId, chunkId);

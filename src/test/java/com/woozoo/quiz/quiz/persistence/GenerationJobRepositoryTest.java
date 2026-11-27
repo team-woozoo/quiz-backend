@@ -1,5 +1,6 @@
 package com.woozoo.quiz.quiz.persistence;
 
+import com.woozoo.quiz.TestHashes;
 import com.woozoo.quiz.TestcontainersConfiguration;
 import com.woozoo.quiz.auth.domain.NewUser;
 import com.woozoo.quiz.auth.persistence.UserRepository;
@@ -48,7 +49,7 @@ class GenerationJobRepositoryTest {
     @BeforeEach
     void setup() {
         userId = userRepository.save(new NewUser("job@test.com", "1234", "홍길동"));
-        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "network.pdf", FileType.PDF, 30, null));
+        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "network.pdf", FileType.PDF, 30, TestHashes.unique()));
     }
 
     private long createJob() {
@@ -60,7 +61,7 @@ class GenerationJobRepositoryTest {
     private long createJobOfNewUser(String email) {
         long otherUserId = userRepository.save(new NewUser(email, "1234", "다른 사용자"));
         long otherMaterialId = materialRepository.save(
-                new NewMaterial(otherUserId, "운영체제 3강", "os.pdf", FileType.PDF, 30, null));
+                new NewMaterial(otherUserId, "운영체제 3강", "os.pdf", FileType.PDF, 30, TestHashes.unique()));
         return generationJobRepository.create(
                 new NewGenerationJob(otherUserId, otherMaterialId, QuizKind.NORMAL, QuizFormat.OX, Difficulty.NORMAL));
     }

@@ -5,7 +5,6 @@ import com.woozoo.quiz.concept.domain.MaterialConcept;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-import java.sql.Array;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Arrays;
@@ -40,11 +39,10 @@ public class MaterialConceptRepository {
                 .list();
     }
 
-    // 배열 컬럼은 레코드로 바로 옮겨지지 않아 직접 꺼낸다. 분석 전에 생긴 개념은 태그가 NULL 이라 빈 목록으로 본다
+    // 배열 컬럼은 레코드로 바로 옮겨지지 않아 직접 꺼낸다
     private static MaterialConcept toMaterialConcept(ResultSet rs) throws SQLException {
-        Array tagArray = rs.getArray("tags");
-        List<ConceptTag> tags = tagArray == null ? List.of()
-                : Arrays.stream((String[]) tagArray.getArray()).map(ConceptTag::valueOf).toList();
+        String[] tagNames = (String[]) rs.getArray("tags").getArray();
+        List<ConceptTag> tags = Arrays.stream(tagNames).map(ConceptTag::valueOf).toList();
         Integer[] chunkSeqs = (Integer[]) rs.getArray("chunk_seqs").getArray();
         return new MaterialConcept(
                 rs.getLong("id"),
