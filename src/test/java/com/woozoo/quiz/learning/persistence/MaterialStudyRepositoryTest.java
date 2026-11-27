@@ -1,5 +1,6 @@
 package com.woozoo.quiz.learning.persistence;
 
+import com.woozoo.quiz.TestHashes;
 import com.woozoo.quiz.TestcontainersConfiguration;
 import com.woozoo.quiz.auth.domain.NewUser;
 import com.woozoo.quiz.auth.persistence.UserRepository;
@@ -72,7 +73,7 @@ class MaterialStudyRepositoryTest {
 
     // 2쪽은 글자가 없는 페이지라 청크가 없다고 보고, 청크 번호와 페이지 번호가 어긋나게 둔다
     private long createMaterial(long ownerId, String title) {
-        long id = materialRepository.save(new NewMaterial(ownerId, title, "lecture.pdf", FileType.PDF, 30, null));
+        long id = materialRepository.save(new NewMaterial(ownerId, title, "lecture.pdf", FileType.PDF, 30, TestHashes.unique()));
         materialRepository.saveChunks(id, List.of(
                 new MaterialChunk(1, 1, "1쪽"),
                 new MaterialChunk(2, 3, "3쪽"),

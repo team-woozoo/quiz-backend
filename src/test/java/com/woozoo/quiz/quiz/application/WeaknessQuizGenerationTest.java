@@ -1,5 +1,6 @@
 package com.woozoo.quiz.quiz.application;
 
+import com.woozoo.quiz.TestHashes;
 import com.woozoo.quiz.SyncTaskExecutorConfiguration;
 import com.woozoo.quiz.TestcontainersConfiguration;
 import com.woozoo.quiz.auth.domain.NewUser;
@@ -89,7 +90,7 @@ class WeaknessQuizGenerationTest {
     @BeforeEach
     void setup() {
         userId = userRepository.save(new NewUser("weakness@test.com", "1234", "홍길동"));
-        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30, null));
+        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30, TestHashes.unique()));
         materialRepository.saveChunks(materialId, List.of(
                 new MaterialChunk(1, 1, PAGE_1), new MaterialChunk(2, 3, PAGE_3), new MaterialChunk(3, 4, PAGE_4)));
         List<StoredChunk> chunks = materialRepository.findChunks(materialId);
@@ -274,7 +275,7 @@ class WeaknessQuizGenerationTest {
                 .isEqualTo(ErrorCode.DAILY_GENERATION_LIMIT_EXCEEDED);
     }
 
-    // 개념에 이어진 페이지가 없을 수 있다(업로드 분석 전에 생긴 개념 등). 보낼 페이지가 없으면 생성기를 부르지 않는다
+    // 개념에 이어진 페이지가 없으면 보낼 페이지가 없어, 생성기를 부르지 않는다
     @Test
     void 나온_페이지가_없는_개념이면_생성기를_부르지_않고_NO_VALID_QUESTIONS_로_실패한다() {
         long pageless = materialConceptRepository.save(materialId, "페이지 없는 개념", "설명", List.of());

@@ -130,7 +130,7 @@ public class QuizGenerationWorker {
 
         List<StoredChunk> chunks = materialRepository.findChunks(job.materialId());
         List<MaterialConcept> concepts = materialConceptRepository.findForGeneration(job.materialId());
-        // 업로드 분석 전에 올린 자료는 개념이 없어 생성기가 문제를 붙일 곳이 없다. 생성기를 부르지 않고 바로 실패로 끝낸다
+        // 업로드는 개념이 하나 이상일 때만 자료를 저장해 보통은 비지 않는다. 비었다면 문제를 붙일 곳이 없어 생성기를 부르지 않고 끝낸다
         if (concepts.isEmpty()) {
             throw new BusinessException(ErrorCode.NO_VALID_QUESTIONS);
         }

@@ -1,5 +1,6 @@
 package com.woozoo.quiz.quiz.application;
 
+import com.woozoo.quiz.TestHashes;
 import com.woozoo.quiz.ConceptFixture;
 import com.woozoo.quiz.concept.persistence.MaterialConceptRepository;
 import com.woozoo.quiz.SyncTaskExecutorConfiguration;
@@ -69,7 +70,7 @@ class QuizGenerationFailureTest {
     @BeforeEach
     void setup() {
         userId = userRepository.save(new NewUser("failure@test.com", "1234", "홍길동"));
-        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30, null));
+        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30, TestHashes.unique()));
         materialRepository.saveChunks(materialId, List.of(new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다.")));
         ConceptFixture.conceptPerChunk(materialRepository, materialConceptRepository, materialId);
     }
@@ -99,7 +100,7 @@ class QuizGenerationFailureTest {
         assertThat(quizCount()).isZero();
     }
 
-    // 업로드 분석 전에 올린 자료는 개념이 없어, 생성기를 부르지 않고 바로 실패한다
+    // 업로드는 개념이 있어야 자료를 저장하지만, 개념이 없는 자료가 생기더라도 생성기를 부르지 않고 바로 실패한다
     @Test
     void 개념이_없는_자료는_생성기를_부르지_않고_NO_VALID_QUESTIONS_가_된다() {
         jdbcClient.sql("DELETE FROM material_concept WHERE material_id = :materialId")

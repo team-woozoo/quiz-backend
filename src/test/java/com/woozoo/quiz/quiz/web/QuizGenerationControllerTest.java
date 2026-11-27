@@ -1,5 +1,6 @@
 package com.woozoo.quiz.quiz.web;
 
+import com.woozoo.quiz.TestHashes;
 import com.woozoo.quiz.ConceptFixture;
 import com.jayway.jsonpath.JsonPath;
 import com.woozoo.quiz.SyncTaskExecutorConfiguration;
@@ -68,7 +69,7 @@ class QuizGenerationControllerTest {
         ownerToken = jwtProvider.createAccessToken(ownerId);
         otherToken = jwtProvider.createAccessToken(otherId);
 
-        materialId = materialRepository.save(new NewMaterial(ownerId, "네트워크 5강", "05.pdf", FileType.PDF, 30, null));
+        materialId = materialRepository.save(new NewMaterial(ownerId, "네트워크 5강", "05.pdf", FileType.PDF, 30, TestHashes.unique()));
         materialRepository.saveChunks(materialId, List.of(
                 new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다."),
                 new MaterialChunk(2, 2, "UDP는 비연결형 프로토콜이다.")));

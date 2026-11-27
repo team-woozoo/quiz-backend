@@ -1,5 +1,6 @@
 package com.woozoo.quiz.quiz.application;
 
+import com.woozoo.quiz.TestHashes;
 import com.woozoo.quiz.ConceptFixture;
 import com.woozoo.quiz.concept.persistence.MaterialConceptRepository;
 import com.woozoo.quiz.SyncTaskExecutorConfiguration;
@@ -60,7 +61,7 @@ class QuizGenerationServiceTest {
     void setup() {
         userId = userRepository.save(new NewUser("owner@test.com", "1234", "주인"));
         otherUserId = userRepository.save(new NewUser("other@test.com", "1234", "남"));
-        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30, null));
+        materialId = materialRepository.save(new NewMaterial(userId, "네트워크 5강", "05.pdf", FileType.PDF, 30, TestHashes.unique()));
         materialRepository.saveChunks(materialId, List.of(
                 new MaterialChunk(1, 1, "TCP는 연결 지향 프로토콜이다.\n신뢰성 있는 전송을 보장한다."),
                 new MaterialChunk(2, 2, "UDP는 비연결형 프로토콜이다.\n순서를 보장하지 않는다."),
